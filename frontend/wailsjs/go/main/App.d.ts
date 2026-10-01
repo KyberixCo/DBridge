@@ -34,6 +34,8 @@ export function GetSecurityPolicy():Promise<models.SecurityPolicy>;
 
 export function GetTableSchema(arg1:string,arg2:string):Promise<Array<models.ColumnInfo>>;
 
+export function OpenSQLFile():Promise<Record<string, string>>;
+
 export function ParseDBeaverFile(arg1:string):Promise<Array<models.ConnectionProfile>>;
 
 export function ParseTNSFile(arg1:string):Promise<Array<models.TNSEntry>>;
@@ -41,6 +43,8 @@ export function ParseTNSFile(arg1:string):Promise<Array<models.TNSEntry>>;
 export function RestartMCPServer(arg1:number):Promise<void>;
 
 export function SaveConnection(arg1:models.ConnectionProfile):Promise<models.ConnectionProfile>;
+
+export function SaveSQLFile(arg1:string,arg2:string):Promise<Record<string, string>>;
 
 export function SaveSecurityPolicy(arg1:models.SecurityPolicy):Promise<void>;
 

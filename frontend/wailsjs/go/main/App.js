@@ -66,6 +66,10 @@ export function GetTableSchema(arg1, arg2) {
   return window['go']['main']['App']['GetTableSchema'](arg1, arg2);
 }
 
+export function OpenSQLFile() {
+  return window['go']['main']['App']['OpenSQLFile']();
+}
+
 export function ParseDBeaverFile(arg1) {
   return window['go']['main']['App']['ParseDBeaverFile'](arg1);
 }
@@ -80,6 +84,10 @@ export function RestartMCPServer(arg1) {
 
 export function SaveConnection(arg1) {
   return window['go']['main']['App']['SaveConnection'](arg1);
+}
+
+export function SaveSQLFile(arg1, arg2) {
+  return window['go']['main']['App']['SaveSQLFile'](arg1, arg2);
 }
 
 export function SaveSecurityPolicy(arg1) {

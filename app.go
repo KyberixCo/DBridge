@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -280,5 +282,67 @@ func (a *App) DetectDBeaverFiles() []string {
 func (a *App) ParseDBeaverFile(filePath string) ([]models.ConnectionProfile, error) {
 	return oracle.ParseDBeaverFile(filePath)
 }
+
+// --- SQL File Management ---
+
+func (a *App) OpenSQLFile() (map[string]string, error) {
+	if a.ctx == nil {
+		return nil, fmt.Errorf("application context not ready")
+	}
+
+	selected, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Open SQL Script",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "SQL Scripts (*.sql)", Pattern: "*.sql"},
+			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
+		},
+	})
+	if err != nil || selected == "" {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(selected)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read SQL file %s: %w", selected, err)
+	}
+
+	return map[string]string{
+		"path":    selected,
+		"name":    filepath.Base(selected),
+		"content": string(data),
+	}, nil
+}
+
+func (a *App) SaveSQLFile(filePath string, content string) (map[string]string, error) {
+	if a.ctx == nil {
+		return nil, fmt.Errorf("application context not ready")
+	}
+
+	if filePath == "" {
+		selected, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+			Title:           "Save SQL Script",
+			DefaultFilename: "query.sql",
+			Filters: []runtime.FileFilter{
+				{DisplayName: "SQL Scripts (*.sql)", Pattern: "*.sql"},
+				{DisplayName: "All Files (*.*)", Pattern: "*.*"},
+			},
+		})
+		if err != nil || selected == "" {
+			return nil, err
+		}
+		filePath = selected
+	}
+
+	err := os.WriteFile(filePath, []byte(content), 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save SQL file %s: %w", filePath, err)
+	}
+
+	return map[string]string{
+		"path": filePath,
+		"name": filepath.Base(filePath),
+	}, nil
+}
+
 
 

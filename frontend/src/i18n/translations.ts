@@ -124,6 +124,15 @@ export interface Translations {
     colNullable: string;
     colPk: string;
     emptyResults: string;
+    openScriptBtn: string;
+    saveScriptBtn: string;
+    saveAsScriptBtn: string;
+    runCurrentBtn: string;
+    runStepBtn: string;
+    runScriptBtn: string;
+    statementCounter: (curr: number, total: number) => string;
+    scriptResultsTitle: string;
+    noFileLoaded: string;
   };
   security: {
     subsystem: string;
@@ -361,6 +370,15 @@ export const translations: Record<Language, Translations> = {
       colNullable: 'NULLABLE',
       colPk: 'PK',
       emptyResults: 'Execute a SQL query above to see data grid results.',
+      openScriptBtn: 'OPEN .SQL SCRIPT...',
+      saveScriptBtn: 'SAVE SCRIPT',
+      saveAsScriptBtn: 'SAVE AS...',
+      runCurrentBtn: 'RUN CURRENT (CMD+ENTER)',
+      runStepBtn: 'STEP & NEXT ▶',
+      runScriptBtn: 'RUN ALL SCRIPT ⚡',
+      statementCounter: (curr, total) => `STMT ${curr} OF ${total}`,
+      scriptResultsTitle: 'SCRIPT EXECUTION RESULTS',
+      noFileLoaded: 'UNSAVED BUFFER',
     },
     security: {
       subsystem: '// SUB-SYSTEM: MCP_FIREWALL',
@@ -596,6 +614,15 @@ export const translations: Record<Language, Translations> = {
       colNullable: 'NULABLE',
       colPk: 'PK',
       emptyResults: 'Ejecuta una consulta SQL para visualizar resultados en la grilla.',
+      openScriptBtn: 'ABRIR SCRIPT .SQL...',
+      saveScriptBtn: 'GUARDAR SCRIPT',
+      saveAsScriptBtn: 'GUARDAR COMO...',
+      runCurrentBtn: 'EJECUTAR ACTUAL (CMD+ENTER)',
+      runStepBtn: 'PASO Y SIGUIENTE ▶',
+      runScriptBtn: 'EJECUTAR TODO EL SCRIPT ⚡',
+      statementCounter: (curr, total) => `SENTENCIA ${curr} DE ${total}`,
+      scriptResultsTitle: 'RESULTADOS DEL SCRIPT',
+      noFileLoaded: 'BUFFER SIN GUARDAR',
     },
     security: {
       subsystem: '// SUB-SISTEMA: MCP_FIREWALL',
