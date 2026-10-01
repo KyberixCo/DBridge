@@ -1,7 +1,27 @@
-import React, { useState } from 'react';
-import { X, CheckCircle2, AlertTriangle, Loader2, Database, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  X,
+  CheckCircle2,
+  AlertTriangle,
+  Loader2,
+  Database,
+  ShieldCheck,
+  Eye,
+  EyeOff,
+  FolderOpen,
+  Sparkles,
+  Check,
+} from 'lucide-react';
 import { models } from '../../wailsjs/go/models';
-import { TestConnection } from '../../wailsjs/go/main/App';
+import {
+  TestConnection,
+  SelectTNSFile,
+  DetectTNSFiles,
+  ParseTNSFile,
+  SelectDBeaverFile,
+  DetectDBeaverFiles,
+  ParseDBeaverFile,
+} from '../../wailsjs/go/main/App';
 import { useI18n } from '../i18n/LanguageContext';
 
 interface ConnectionModalProps {
@@ -41,6 +61,96 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
   const [testResult, setTestResult] = useState<models.ConnectionTestResult | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Assisted Import States (TNS & DBeaver)
+  const [importMode, setImportMode] = useState<'none' | 'tns' | 'dbeaver'>('none');
+  const [detectedTNS, setDetectedTNS] = useState<string[]>([]);
+  const [tnsEntries, setTnsEntries] = useState<models.TNSEntry[]>([]);
+  const [detectedDBeaver, setDetectedDBeaver] = useState<string[]>([]);
+  const [dbeaverProfiles, setDbeaverProfiles] = useState<models.ConnectionProfile[]>([]);
+  const [importNotice, setImportNotice] = useState<string>('');
+
+  useEffect(() => {
+    if (isOpen) {
+      DetectTNSFiles().then((files) => setDetectedTNS(files || [])).catch(() => {});
+      DetectDBeaverFiles().then((files) => setDetectedDBeaver(files || [])).catch(() => {});
+    }
+  }, [isOpen]);
+
+  const handleLoadTNSPath = async (filePath: string) => {
+    try {
+      const entries = await ParseTNSFile(filePath);
+      setTnsEntries(entries || []);
+      setImportNotice(t.modal.tnsAliasesLoaded((entries || []).length));
+    } catch (err: any) {
+      setErrorMsg(err?.message || String(err));
+    }
+  };
+
+  const handleBrowseTNS = async () => {
+    try {
+      const file = await SelectTNSFile();
+      if (file) {
+        await handleLoadTNSPath(file);
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || String(err));
+    }
+  };
+
+  const handleApplyTNSEntry = (entry: models.TNSEntry) => {
+    setFormData((prev) =>
+      models.ConnectionProfile.createFrom({
+        ...prev,
+        name: prev.name && prev.name !== 'localhost' ? prev.name : entry.alias,
+        host: entry.host || prev.host,
+        port: entry.port || 1521,
+        isSid: entry.isSid,
+        serviceName: entry.serviceName || (entry.isSid ? '' : prev.serviceName),
+        sid: entry.sid || (entry.isSid ? prev.sid : ''),
+        ssl: entry.ssl,
+      })
+    );
+    setImportNotice(`✓ ${entry.alias} (${entry.isSid ? 'SID: ' + entry.sid : 'SERVICE: ' + entry.serviceName})`);
+  };
+
+  const handleLoadDBeaverPath = async (filePath: string) => {
+    try {
+      const profiles = await ParseDBeaverFile(filePath);
+      setDbeaverProfiles(profiles || []);
+      setImportNotice(t.modal.dbeaverConnsLoaded((profiles || []).length));
+    } catch (err: any) {
+      setErrorMsg(err?.message || String(err));
+    }
+  };
+
+  const handleBrowseDBeaver = async () => {
+    try {
+      const file = await SelectDBeaverFile();
+      if (file) {
+        await handleLoadDBeaverPath(file);
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || String(err));
+    }
+  };
+
+  const handleApplyDBeaverProfile = (p: models.ConnectionProfile) => {
+    setFormData((prev) =>
+      models.ConnectionProfile.createFrom({
+        ...prev,
+        name: p.name || prev.name,
+        host: p.host || prev.host,
+        port: p.port || 1521,
+        isSid: p.isSid,
+        serviceName: p.serviceName,
+        sid: p.sid,
+        username: p.username || prev.username,
+        ssl: p.ssl,
+      })
+    );
+    setImportNotice(`✓ DBeaver: ${p.name} (${p.isSid ? 'SID: ' + p.sid : 'SERVICE: ' + p.serviceName})`);
+  };
 
   if (!isOpen) return null;
 
@@ -105,7 +215,147 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs font-mono">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs font-mono max-h-[85vh] overflow-y-auto">
+          {/* ASSISTED IMPORT SECTION (TNSNAMES.ORA & DBEAVER) */}
+          <div className="p-3 bg-[#080808] border border-[#2e2e2e] space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-[#a7a49c] font-black uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[#d9ff3f]" />
+                {t.modal.importToggleLabel}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setImportMode(importMode === 'tns' ? 'none' : 'tns')}
+                  className={`px-2 py-0.5 text-[10px] font-bold border transition-colors cursor-pointer ${
+                    importMode === 'tns'
+                      ? 'border-[#d9ff3f] bg-[#d9ff3f] text-[#050505]'
+                      : 'border-[#2e2e2e] bg-[#121212] text-[#a7a49c] hover:text-[#f2efe6]'
+                  }`}
+                >
+                  {t.modal.importTabTns}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportMode(importMode === 'dbeaver' ? 'none' : 'dbeaver')}
+                  className={`px-2 py-0.5 text-[10px] font-bold border transition-colors cursor-pointer ${
+                    importMode === 'dbeaver'
+                      ? 'border-[#d9ff3f] bg-[#d9ff3f] text-[#050505]'
+                      : 'border-[#2e2e2e] bg-[#121212] text-[#a7a49c] hover:text-[#f2efe6]'
+                  }`}
+                >
+                  {t.modal.importTabDbeaver}
+                </button>
+              </div>
+            </div>
+
+            {/* TNS Tab */}
+            {importMode === 'tns' && (
+              <div className="pt-2 border-t border-[#1e1e1e] space-y-2 text-[11px]">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleBrowseTNS}
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-[#141414] hover:bg-[#1f1f1f] border border-[#2e2e2e] text-[#f2efe6] font-bold text-[10px] cursor-pointer"
+                  >
+                    <FolderOpen className="w-3 h-3 text-[#d9ff3f]" />
+                    {t.modal.tnsImportBtn}
+                  </button>
+                  {detectedTNS.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleLoadTNSPath(detectedTNS[0])}
+                      className="text-[10px] text-[#d9ff3f] hover:underline cursor-pointer truncate max-w-[240px]"
+                      title={detectedTNS[0]}
+                    >
+                      {t.modal.tnsDetectedLabel} {detectedTNS[0].split('/').pop()}
+                    </button>
+                  )}
+                </div>
+
+                {tnsEntries.length > 0 && (
+                  <div>
+                    <select
+                      onChange={(e) => {
+                        const entry = tnsEntries.find((item) => item.alias === e.target.value);
+                        if (entry) handleApplyTNSEntry(entry);
+                      }}
+                      defaultValue=""
+                      className="w-full bg-[#121212] border border-[#d9ff3f] px-2.5 py-1.5 text-[#f2efe6] text-[11px] focus:outline-none cursor-pointer"
+                    >
+                      <option value="" disabled>
+                        {t.modal.tnsSelectAliasPlaceholder}
+                      </option>
+                      {tnsEntries.map((e) => (
+                        <option key={e.alias} value={e.alias}>
+                          {e.alias} → {e.host}:{e.port} ({e.isSid ? `SID: ${e.sid}` : `SERVICE: ${e.serviceName}`})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <p className="text-[10px] text-[#706e68]">{t.modal.tnsNotice}</p>
+              </div>
+            )}
+
+            {/* DBeaver Tab */}
+            {importMode === 'dbeaver' && (
+              <div className="pt-2 border-t border-[#1e1e1e] space-y-2 text-[11px]">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleBrowseDBeaver}
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-[#141414] hover:bg-[#1f1f1f] border border-[#2e2e2e] text-[#f2efe6] font-bold text-[10px] cursor-pointer"
+                  >
+                    <FolderOpen className="w-3 h-3 text-[#d9ff3f]" />
+                    {t.modal.dbeaverImportBtn}
+                  </button>
+                  {detectedDBeaver.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleLoadDBeaverPath(detectedDBeaver[0])}
+                      className="text-[10px] text-[#d9ff3f] hover:underline cursor-pointer truncate max-w-[240px]"
+                      title={detectedDBeaver[0]}
+                    >
+                      {t.modal.dbeaverDetectedLabel} auto-detect
+                    </button>
+                  )}
+                </div>
+
+                {dbeaverProfiles.length > 0 && (
+                  <div>
+                    <select
+                      onChange={(e) => {
+                        const prof = dbeaverProfiles.find((item) => item.id === e.target.value);
+                        if (prof) handleApplyDBeaverProfile(prof);
+                      }}
+                      defaultValue=""
+                      className="w-full bg-[#121212] border border-[#d9ff3f] px-2.5 py-1.5 text-[#f2efe6] text-[11px] focus:outline-none cursor-pointer"
+                    >
+                      <option value="" disabled>
+                        {t.modal.dbeaverSelectConnPlaceholder}
+                      </option>
+                      {dbeaverProfiles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} → {p.host}:{p.port} ({p.isSid ? `SID: ${p.sid}` : `SERVICE: ${p.serviceName}`})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <p className="text-[10px] text-[#706e68]">{t.modal.dbeaverNotice}</p>
+              </div>
+            )}
+
+            {/* Import Notice */}
+            {importNotice && (
+              <div className="flex items-center gap-1.5 text-[10px] text-[#d9ff3f] font-mono">
+                <Check className="w-3 h-3 shrink-0" />
+                <span>{importNotice}</span>
+              </div>
+            )}
+          </div>
+
           {/* Profile Name */}
           <div>
             <label className="block text-[11px] text-[#a7a49c] uppercase font-bold tracking-wider mb-1">

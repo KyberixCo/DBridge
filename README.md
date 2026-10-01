@@ -46,6 +46,9 @@
 ### 1. Pure Go Oracle Engine
 - Direct TCP/TCPS connection support for **Oracle 11g, 12c, 19c, 21c, and 23ai**.
 - Supports both modern `SERVICE_NAME` and legacy `SID` routing.
+- **Assisted Configuration Import (`tnsnames.ora` & DBeaver)**:
+  - Discovers and parses `tnsnames.ora` files (from `$TNS_ADMIN`, `$ORACLE_HOME`, or file picker), auto-populating Host, Port, Service Name/SID, and TCPS protocol.
+  - Automatically imports Oracle connection definitions directly from your existing **DBeaver** workspace (`data-sources.json`).
 - Native SSL/TLS (TCPS) encryption and **Oracle Wallet** (`cwallet.sso`) directory support for Oracle Autonomous Cloud Databases (ATP / ADW).
 - Real-time connection testing with latency benchmarking and Oracle banner identification.
 

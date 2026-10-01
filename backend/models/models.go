@@ -61,6 +61,19 @@ type ColumnInfo struct {
 	IsPrimaryKey bool   `json:"isPrimaryKey"`
 }
 
+// TNSEntry represents a parsed entry from a tnsnames.ora file.
+type TNSEntry struct {
+	Alias       string `json:"alias"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Protocol    string `json:"protocol"`
+	ServiceName string `json:"serviceName"`
+	SID         string `json:"sid"`
+	IsSID       bool   `json:"isSid"`
+	SSL         bool   `json:"ssl"`
+	Raw         string `json:"raw"`
+}
+
 // SecurityPolicy defines the permissions and restrictions applied to MCP tool calls.
 type SecurityPolicy struct {
 	Mode            string   `json:"mode"`            // "read_only", "custom", "full"

@@ -241,6 +241,34 @@ export namespace models {
 	        this.maxRows = source["maxRows"];
 	    }
 	}
+	export class TNSEntry {
+	    alias: string;
+	    host: string;
+	    port: number;
+	    protocol: string;
+	    serviceName: string;
+	    sid: string;
+	    isSid: boolean;
+	    ssl: boolean;
+	    raw: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TNSEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.alias = source["alias"];
+	        this.host = source["host"];
+	        this.port = source["port"];
+	        this.protocol = source["protocol"];
+	        this.serviceName = source["serviceName"];
+	        this.sid = source["sid"];
+	        this.isSid = source["isSid"];
+	        this.ssl = source["ssl"];
+	        this.raw = source["raw"];
+	    }
+	}
 
 }
 

@@ -46,6 +46,9 @@
 ### 1. Motor Oracle en Go Puro
 - Conexión TCP y TCPS directa con versiones **Oracle 11g, 12c, 19c, 21c y 23ai**.
 - Soporte para identificadores modernos `SERVICE_NAME` y tradicionales `SID`.
+- **Importación Asistida (`tnsnames.ora` & DBeaver)**:
+  - Detecta y analiza archivos `tnsnames.ora` (desde `$TNS_ADMIN`, `$ORACLE_HOME` o selector de archivos), autocompletando Host, Puerto, Service Name/SID y protocolo TCPS.
+  - Importa perfiles de conexión Oracle existentes directamente desde tu workspace de **DBeaver** (`data-sources.json`).
 - Encriptación SSL/TLS nativa y soporte para carpetas con **Oracle Wallet** (`cwallet.sso`) para conexiones seguras con Oracle Autonomous Cloud (ATP / ADW).
 - Prueba interactiva de conexión con cálculo de latencia e identificación del banner de versión de la base de datos.
 

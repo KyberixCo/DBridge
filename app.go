@@ -235,3 +235,50 @@ func (a *App) AutoConfigureCursor() (string, error) {
 	return integrations.AutoConfigureCursor(port)
 }
 
+// --- TNS Discovery & Parsing ---
+
+func (a *App) SelectTNSFile() (string, error) {
+	if a.ctx == nil {
+		return "", fmt.Errorf("application context is not ready")
+	}
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select tnsnames.ora",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Oracle TNS Files (*.ora)", Pattern: "*.ora"},
+			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
+		},
+	})
+}
+
+func (a *App) DetectTNSFiles() []string {
+	return oracle.DetectTNSFiles()
+}
+
+func (a *App) ParseTNSFile(filePath string) ([]models.TNSEntry, error) {
+	return oracle.ParseTNSFile(filePath)
+}
+
+// --- DBeaver Discovery & Parsing ---
+
+func (a *App) SelectDBeaverFile() (string, error) {
+	if a.ctx == nil {
+		return "", fmt.Errorf("application context is not ready")
+	}
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select DBeaver data-sources.json",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "DBeaver Data Sources (data-sources.json)", Pattern: "*.json"},
+			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
+		},
+	})
+}
+
+func (a *App) DetectDBeaverFiles() []string {
+	return oracle.DetectDBeaverFiles()
+}
+
+func (a *App) ParseDBeaverFile(filePath string) ([]models.ConnectionProfile, error) {
+	return oracle.ParseDBeaverFile(filePath)
+}
+
+

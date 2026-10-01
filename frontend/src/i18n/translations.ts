@@ -79,6 +79,21 @@ export interface Translations {
     testingBtn: string;
     saveBtn: string;
     savingBtn: string;
+    tnsSectionTitle: string;
+    tnsImportBtn: string;
+    tnsDetectedLabel: string;
+    tnsSelectAliasPlaceholder: string;
+    tnsAliasesLoaded: (count: number) => string;
+    tnsNotice: string;
+    dbeaverSectionTitle: string;
+    dbeaverImportBtn: string;
+    dbeaverDetectedLabel: string;
+    dbeaverSelectConnPlaceholder: string;
+    dbeaverConnsLoaded: (count: number) => string;
+    dbeaverNotice: string;
+    importToggleLabel: string;
+    importTabTns: string;
+    importTabDbeaver: string;
   };
   queryStudio: {
     subsystem: string;
@@ -297,6 +312,21 @@ export const translations: Record<Language, Translations> = {
       testingBtn: 'TESTING...',
       saveBtn: 'SAVE PROFILE',
       savingBtn: 'SAVING...',
+      tnsSectionTitle: 'IMPORT FROM TNSNAMES.ORA',
+      tnsImportBtn: 'BROWSE TNSNAMES.ORA...',
+      tnsDetectedLabel: 'DETECTED IN SYSTEM:',
+      tnsSelectAliasPlaceholder: 'SELECT TNS ALIAS TO POPULATE FORM...',
+      tnsAliasesLoaded: (count) => `[${count} ALIASES LOADED]`,
+      tnsNotice: 'Parses Host, Port, Service Name / SID, and TCPS protocol directly into the form.',
+      dbeaverSectionTitle: 'IMPORT FROM DBEAVER',
+      dbeaverImportBtn: 'BROWSE DATA-SOURCES.JSON...',
+      dbeaverDetectedLabel: 'DETECTED DBEAVER WORKSPACE:',
+      dbeaverSelectConnPlaceholder: 'SELECT ORACLE CONNECTION FROM DBEAVER...',
+      dbeaverConnsLoaded: (count) => `[${count} ORACLE CONNECTIONS FOUND]`,
+      dbeaverNotice: 'Imports Host, Port, Service/SID, and Username directly from DBeaver data sources.',
+      importToggleLabel: 'IMPORT PROFILE FROM:',
+      importTabTns: 'TNSNAMES.ORA',
+      importTabDbeaver: 'DBEAVER',
     },
     queryStudio: {
       subsystem: '// SUB-SYSTEM: SQL_STUDIO',
@@ -513,6 +543,21 @@ export const translations: Record<Language, Translations> = {
       testingBtn: 'PROBANDO...',
       saveBtn: 'GUARDAR PERFIL',
       savingBtn: 'GUARDANDO...',
+      tnsSectionTitle: 'IMPORTAR DESDE TNSNAMES.ORA',
+      tnsImportBtn: 'BUSCAR TNSNAMES.ORA...',
+      tnsDetectedLabel: 'DETECTADOS EN EL SISTEMA:',
+      tnsSelectAliasPlaceholder: 'SELECCIONAR ALIAS TNS PARA LLENAR EL FORMULARIO...',
+      tnsAliasesLoaded: (count) => `[${count} ALIAS CARGADOS]`,
+      tnsNotice: 'Autocompleta Host, Puerto, Service Name / SID y protocolo TCPS en el formulario.',
+      dbeaverSectionTitle: 'IMPORTAR DESDE DBEAVER',
+      dbeaverImportBtn: 'BUSCAR DATA-SOURCES.JSON...',
+      dbeaverDetectedLabel: 'WORKSPACE DE DBEAVER DETECTADO:',
+      dbeaverSelectConnPlaceholder: 'SELECCIONAR CONEXIÓN ORACLE DE DBEAVER...',
+      dbeaverConnsLoaded: (count) => `[${count} CONEXIONES ORACLE ENCONTRADAS]`,
+      dbeaverNotice: 'Importa Host, Puerto, Service/SID y Usuario directamente desde los orígenes de datos de DBeaver.',
+      importToggleLabel: 'IMPORTAR PERFIL DESDE:',
+      importTabTns: 'TNSNAMES.ORA',
+      importTabDbeaver: 'DBEAVER',
     },
     queryStudio: {
       subsystem: '// SUB-SISTEMA: SQL_STUDIO',

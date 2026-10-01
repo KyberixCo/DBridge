@@ -12,6 +12,10 @@ export function ClearAuditLogs():Promise<void>;
 
 export function DeleteConnection(arg1:string):Promise<void>;
 
+export function DetectDBeaverFiles():Promise<Array<string>>;
+
+export function DetectTNSFiles():Promise<Array<string>>;
+
 export function ExecutePLSQL(arg1:string,arg2:string):Promise<models.PLSQLResult>;
 
 export function ExecuteQuery(arg1:string,arg2:string,arg3:number):Promise<models.QueryResult>;
@@ -30,11 +34,19 @@ export function GetSecurityPolicy():Promise<models.SecurityPolicy>;
 
 export function GetTableSchema(arg1:string,arg2:string):Promise<Array<models.ColumnInfo>>;
 
+export function ParseDBeaverFile(arg1:string):Promise<Array<models.ConnectionProfile>>;
+
+export function ParseTNSFile(arg1:string):Promise<Array<models.TNSEntry>>;
+
 export function RestartMCPServer(arg1:number):Promise<void>;
 
 export function SaveConnection(arg1:models.ConnectionProfile):Promise<models.ConnectionProfile>;
 
 export function SaveSecurityPolicy(arg1:models.SecurityPolicy):Promise<void>;
+
+export function SelectDBeaverFile():Promise<string>;
+
+export function SelectTNSFile():Promise<string>;
 
 export function SetActiveConnection(arg1:string):Promise<void>;
 

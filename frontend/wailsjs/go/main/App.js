@@ -22,6 +22,14 @@ export function DeleteConnection(arg1) {
   return window['go']['main']['App']['DeleteConnection'](arg1);
 }
 
+export function DetectDBeaverFiles() {
+  return window['go']['main']['App']['DetectDBeaverFiles']();
+}
+
+export function DetectTNSFiles() {
+  return window['go']['main']['App']['DetectTNSFiles']();
+}
+
 export function ExecutePLSQL(arg1, arg2) {
   return window['go']['main']['App']['ExecutePLSQL'](arg1, arg2);
 }
@@ -58,6 +66,14 @@ export function GetTableSchema(arg1, arg2) {
   return window['go']['main']['App']['GetTableSchema'](arg1, arg2);
 }
 
+export function ParseDBeaverFile(arg1) {
+  return window['go']['main']['App']['ParseDBeaverFile'](arg1);
+}
+
+export function ParseTNSFile(arg1) {
+  return window['go']['main']['App']['ParseTNSFile'](arg1);
+}
+
 export function RestartMCPServer(arg1) {
   return window['go']['main']['App']['RestartMCPServer'](arg1);
 }
@@ -68,6 +84,14 @@ export function SaveConnection(arg1) {
 
 export function SaveSecurityPolicy(arg1) {
   return window['go']['main']['App']['SaveSecurityPolicy'](arg1);
+}
+
+export function SelectDBeaverFile() {
+  return window['go']['main']['App']['SelectDBeaverFile']();
+}
+
+export function SelectTNSFile() {
+  return window['go']['main']['App']['SelectTNSFile']();
 }
 
 export function SetActiveConnection(arg1) {
