@@ -10,8 +10,8 @@ export function AutoConfigureCursor() {
   return window['go']['main']['App']['AutoConfigureCursor']();
 }
 
-export function AutoConfigureVSCode(arg1) {
-  return window['go']['main']['App']['AutoConfigureVSCode'](arg1);
+export function AutoConfigureVSCode(arg1, arg2) {
+  return window['go']['main']['App']['AutoConfigureVSCode'](arg1, arg2);
 }
 
 export function ClearAuditLogs() {

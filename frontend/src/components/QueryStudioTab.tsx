@@ -88,7 +88,8 @@ END;`
 
     try {
       if (mode === 'sql') {
-        const res = await ExecuteQuery(activeConnection.id, sqlCode, 500);
+        const cleanSql = sqlCode.trim().replace(/[;/]+$/, '').trim();
+        const res = await ExecuteQuery(activeConnection.id, cleanSql, 500);
         if (res.error) {
           setErrorMsg(res.error);
         } else {

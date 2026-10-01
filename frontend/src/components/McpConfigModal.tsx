@@ -82,10 +82,10 @@ export const McpConfigModal: React.FC<McpConfigModalProps> = ({
     }
   };
 
-  const handleAutoVSCode = async () => {
+  const handleAutoVSCode = async (transport: 'command' | 'sse' = 'command') => {
     setAutoMessage(null);
     try {
-      const res = await AutoConfigureVSCode('');
+      const res = await AutoConfigureVSCode('', transport);
       setAutoMessage({ text: res, isError: false });
     } catch (err: any) {
       setAutoMessage({ text: err?.message || String(err), isError: true });
@@ -102,9 +102,18 @@ export const McpConfigModal: React.FC<McpConfigModalProps> = ({
     }
   };
 
-  const vsCodeConfig = {
+  const vsCodeCommandConfig = {
     servers: {
-      oracle: {
+      "dbridge-oracle": {
+        command: "dbridge",
+        args: ["--mcp"]
+      }
+    }
+  };
+
+  const vsCodeSseConfig = {
+    servers: {
+      "dbridge-oracle": {
         type: "sse",
         url: sseUrl
       }
@@ -220,16 +229,27 @@ export const McpConfigModal: React.FC<McpConfigModalProps> = ({
               <div className="p-3 bg-[#101010] border border-[#2e2e2e] flex flex-col justify-between">
                 <div>
                   <div className="font-bold text-[#f2efe6] text-xs">VS CODE / COPILOT</div>
-                  <div className="text-[10px] text-[#a7a49c] mt-1">.vscode/mcp.json</div>
+                  <div className="text-[10px] text-[#a7a49c] mt-1">%APPDATA%\Code\User\mcp.json</div>
                 </div>
-                <TacticalButton
-                  size="sm"
-                  variant="acid"
-                  onClick={handleAutoVSCode}
-                  className="mt-3 w-full"
-                >
-                  {t.mcpModal.installVSCodeBtn}
-                </TacticalButton>
+                <div className="mt-3 space-y-1.5">
+                  <TacticalButton
+                    size="sm"
+                    variant="acid"
+                    onClick={() => handleAutoVSCode('command')}
+                    className="w-full text-[10px]"
+                    title="Configura VS Code usando comando CLI directo (dbridge --mcp)"
+                  >
+                    {t.mcpModal.installVSCodeCommandBtn}
+                  </TacticalButton>
+                  <button
+                    type="button"
+                    onClick={() => handleAutoVSCode('sse')}
+                    className="w-full text-center py-1 text-[10px] font-mono font-bold text-[#a7a49c] hover:text-[#f2efe6] bg-[#1a1a1a] hover:bg-[#252525] border border-[#2e2e2e] transition-colors cursor-pointer"
+                    title="Configura VS Code usando URL de red SSE"
+                  >
+                    {t.mcpModal.installVSCodeSseBtn}
+                  </button>
+                </div>
               </div>
 
               <div className="p-3 bg-[#101010] border border-[#2e2e2e] flex flex-col justify-between">
@@ -301,7 +321,7 @@ export const McpConfigModal: React.FC<McpConfigModalProps> = ({
 
             <div className="p-4 space-y-3">
               {activeSubTab === 'vscode' && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <div className="text-xs text-[#f2efe6] leading-relaxed">
                     <strong>{t.mcpModal.vscodeGuideTitle}</strong>
                     <ol className="list-decimal pl-4 mt-2 space-y-1.5 text-[#a7a49c]">
@@ -314,16 +334,44 @@ export const McpConfigModal: React.FC<McpConfigModalProps> = ({
                     </ol>
                   </div>
 
-                  <div className="relative">
-                    <pre className="p-3 bg-[#000000] border border-[#2e2e2e] text-[11px] text-[#d9ff3f] overflow-x-auto leading-relaxed">
-                      {JSON.stringify(vsCodeConfig, null, 2)}
-                    </pre>
-                    <button
-                      onClick={() => copyToClipboard(JSON.stringify(vsCodeConfig, null, 2), 'vscode-json')}
-                      className="absolute top-2 right-2 brutal-button brutal-button--ghost py-0.5 px-2 min-h-[26px] text-[10px]"
-                    >
-                      {copiedSection === 'vscode-json' ? `[ ${t.common.copied} ]` : `[ ${t.common.copy} JSON ]`}
-                    </button>
+                  {/* 1. Command Mode (Recommended) */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-[#d9ff3f] font-bold uppercase tracking-wider">
+                        {t.mcpModal.vscodeModeCommand}
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <pre className="p-3 bg-[#000000] border border-[#2e2e2e] text-[11px] text-[#d9ff3f] overflow-x-auto leading-relaxed">
+                        {JSON.stringify(vsCodeCommandConfig, null, 2)}
+                      </pre>
+                      <button
+                        onClick={() => copyToClipboard(JSON.stringify(vsCodeCommandConfig, null, 2), 'vscode-cmd-json')}
+                        className="absolute top-2 right-2 brutal-button brutal-button--ghost py-0.5 px-2 min-h-[26px] text-[10px]"
+                      >
+                        {copiedSection === 'vscode-cmd-json' ? `[ ${t.common.copied} ]` : `[ ${t.common.copy} JSON ]`}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 2. SSE Mode */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-[#a7a49c] font-bold uppercase tracking-wider">
+                        {t.mcpModal.vscodeModeSse}
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <pre className="p-3 bg-[#000000] border border-[#2e2e2e] text-[11px] text-[#a7a49c] overflow-x-auto leading-relaxed">
+                        {JSON.stringify(vsCodeSseConfig, null, 2)}
+                      </pre>
+                      <button
+                        onClick={() => copyToClipboard(JSON.stringify(vsCodeSseConfig, null, 2), 'vscode-sse-json')}
+                        className="absolute top-2 right-2 brutal-button brutal-button--ghost py-0.5 px-2 min-h-[26px] text-[10px]"
+                      >
+                        {copiedSection === 'vscode-sse-json' ? `[ ${t.common.copied} ]` : `[ ${t.common.copy} JSON ]`}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

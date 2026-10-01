@@ -141,8 +141,21 @@ Edita tu archivo `claude_desktop_config.json`:
 
 ### VS Code & GitHub Copilot
 
-Agrega la siguiente configuración en `.vscode/mcp.json` dentro de tu proyecto o ajustes de usuario:
+La configuración puede colocarse a nivel global en `%APPDATA%\Code\User\mcp.json` (Windows) o `~/Library/Application Support/Code/User/mcp.json` (macOS), o por proyecto en `.vscode/mcp.json`.
 
+**Opción 1: Modo Comando CLI (Recomendado — corre en segundo plano vía PATH sin requerir la GUI abierta):**
+```json
+{
+  "servers": {
+    "dbridge-oracle": {
+      "command": "dbridge",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+
+**Opción 2: Modo Red SSE (Se conecta a la app dbridge abierta en puerto :8085):**
 ```json
 {
   "servers": {

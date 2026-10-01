@@ -147,6 +147,13 @@ func (cm *ClientManager) ExecuteQuery(ctx context.Context, p models.ConnectionPr
 		maxRows = 500
 	}
 
+	// Sanitize programmatic SQL: strip trailing semicolons, slashes, and whitespace
+	query = strings.TrimSpace(query)
+	for strings.HasSuffix(query, ";") || strings.HasSuffix(query, "/") {
+		query = strings.TrimRight(query, ";/")
+		query = strings.TrimSpace(query)
+	}
+
 	db, err := cm.GetDB(p)
 	if err != nil {
 		return nil, err

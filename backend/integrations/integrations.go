@@ -211,7 +211,8 @@ func AutoConfigureClaude(port int) (string, error) {
 
 // AutoConfigureVSCodeWorkspace creates or updates VS Code mcp.json.
 // If targetDir is "", it updates the user's global configuration (%APPDATA%\Code\User\mcp.json on Windows).
-func AutoConfigureVSCodeWorkspace(targetDir string, port int) (string, error) {
+// transport can be "command" (stdio mode) or "sse" (HTTP/SSE mode). Default is "command".
+func AutoConfigureVSCodeWorkspace(targetDir string, transport string, port int) (string, error) {
 	mcpPath, err := GetVSCodeConfigPath(targetDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve VS Code configuration path: %w", err)
@@ -235,10 +236,21 @@ func AutoConfigureVSCodeWorkspace(targetDir string, port int) (string, error) {
 			targetKey = "servers"
 		}
 
-		// Update or insert dbridge-oracle while preserving all other configured servers
-		targetMap["dbridge-oracle"] = map[string]interface{}{
-			"type": "sse",
-			"url":  sseURL,
+		if transport == "sse" {
+			targetMap["dbridge-oracle"] = map[string]interface{}{
+				"type": "sse",
+				"url":  sseURL,
+			}
+		} else {
+			// Command / stdio mode
+			commandName := "dbridge"
+			if runtime.GOOS == "windows" {
+				commandName = "dbridge.exe"
+			}
+			targetMap["dbridge-oracle"] = map[string]interface{}{
+				"command": commandName,
+				"args":    []string{"--mcp"},
+			}
 		}
 
 		root[targetKey] = targetMap
@@ -249,7 +261,12 @@ func AutoConfigureVSCodeWorkspace(targetDir string, port int) (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprintf("VS Code configuration successfully updated at %s", mcpPath), nil
+	modeLabel := "Command / Stdio"
+	if transport == "sse" {
+		modeLabel = "SSE / Network URL"
+	}
+
+	return fmt.Sprintf("VS Code configuration successfully updated [%s] at %s", modeLabel, mcpPath), nil
 }
 
 // AutoConfigureCursor injects or updates ~/.cursor/mcp.json

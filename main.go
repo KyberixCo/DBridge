@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -22,10 +23,13 @@ import (
 var assets embed.FS
 
 func main() {
-	// Check for headless stdio MCP server mode (e.g. `oramcp --mcp` or `oramcp stdio`)
-	if len(os.Args) > 1 && (os.Args[1] == "--mcp" || os.Args[1] == "-mcp" || os.Args[1] == "stdio") {
-		runStdioMCP()
-		return
+	// Check for headless stdio MCP server mode (e.g. `dbridge --mcp` or `dbridge stdio`)
+	if len(os.Args) > 1 {
+		arg := strings.ToLower(os.Args[1])
+		if arg == "--mcp" || arg == "-mcp" || arg == "mcp" || arg == "stdio" || arg == "--stdio" || arg == "-stdio" || arg == "/mcp" {
+			runStdioMCP()
+			return
+		}
 	}
 
 	// Create an instance of the app structure
@@ -74,7 +78,7 @@ func main() {
 func runStdioMCP() {
 	cfg, err := storage.NewConfigManager()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "OraMCP: failed to load configuration: %v\n", err)
+		fmt.Fprintf(os.Stderr, "dbridge: failed to load configuration: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -84,7 +88,7 @@ func runStdioMCP() {
 
 	ctx := context.Background()
 	if err := server.RunStdio(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "OraMCP stdio exited with error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "dbridge stdio exited with error: %v\n", err)
 		os.Exit(1)
 	}
 }

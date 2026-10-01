@@ -225,9 +225,9 @@ func (a *App) AutoConfigureClaude() (string, error) {
 	return integrations.AutoConfigureClaude(port)
 }
 
-func (a *App) AutoConfigureVSCode(targetDir string) (string, error) {
+func (a *App) AutoConfigureVSCode(targetDir string, transport string) (string, error) {
 	port := a.configMgr.GetMCPPort()
-	return integrations.AutoConfigureVSCodeWorkspace(targetDir, port)
+	return integrations.AutoConfigureVSCodeWorkspace(targetDir, transport, port)
 }
 
 func (a *App) AutoConfigureCursor() (string, error) {

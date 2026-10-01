@@ -203,6 +203,10 @@ export interface Translations {
     tab1ClickDesc: string;
     installClaudeBtn: string;
     installVSCodeBtn: string;
+    installVSCodeCommandBtn: string;
+    installVSCodeSseBtn: string;
+    vscodeModeCommand: string;
+    vscodeModeSse: string;
     installCursorBtn: string;
     manualEndpointsTitle: string;
     sseEndpointLabel: string;
@@ -435,15 +439,19 @@ export const translations: Record<Language, Translations> = {
       tab1ClickTitle: 'ASSISTED 1-CLICK INTEGRATIONS',
       tab1ClickDesc: 'Click a button below to automatically register dbridge in your AI coding assistant configuration.',
       installClaudeBtn: 'CONFIGURE CLAUDE DESKTOP',
-      installVSCodeBtn: 'CONFIGURE VS CODE (.vscode/mcp.json)',
+      installVSCodeBtn: 'CONFIGURE VS CODE',
+      installVSCodeCommandBtn: 'CONFIGURE VS CODE (COMMAND / STDIO)',
+      installVSCodeSseBtn: 'CONFIGURE VS CODE (SSE / URL)',
+      vscodeModeCommand: 'CLI COMMAND MODE (STDIO - RECOMMENDED FOR COPILOT / IN PATH)',
+      vscodeModeSse: 'NETWORK SSE MODE (REQUIRES RUNNING DBRIDGE APP)',
       installCursorBtn: 'CONFIGURE CURSOR (~/.cursor/mcp.json)',
       manualEndpointsTitle: 'ACTIVE NETWORK ENDPOINTS',
       sseEndpointLabel: 'SSE PROTOCOL URL:',
       httpEndpointLabel: 'DIRECT HTTP/JSON-RPC URL:',
       cliStdioTitle: 'CLI STDIO RUNNER COMMAND',
       vscodeGuideTitle: 'VS CODE & GITHUB COPILOT MCP SETUP',
-      vscodeGuideStep1: '1. In VS Code, MCP servers are configured in your workspace .vscode/mcp.json or user settings.',
-      vscodeGuideStep2: '2. Click the 1-Click Configure button or add the JSON snippet below to your settings:',
+      vscodeGuideStep1: '1. In VS Code, MCP servers can run as a CLI Command (stdio) or via HTTP SSE endpoint in your User mcp.json (%APPDATA%\\Code\\User\\mcp.json).',
+      vscodeGuideStep2: '2. Click the 1-Click Configure button or add either JSON snippet below to your settings:',
       intellijGuideTitle: 'INTELLIJ IDEA / JETBRAINS SETUP (WINDOWS & MACOS)',
       intellijGuideDesc: 'Configure dbridge in IntelliJ IDEA via the Model Context Protocol settings:',
       intellijStep1: '1. Open IntelliJ Settings (Ctrl+Alt+S on Windows / Cmd+, on macOS) -> Tools -> Model Context Protocol (MCP).',
@@ -666,15 +674,19 @@ export const translations: Record<Language, Translations> = {
       tab1ClickTitle: 'INTEGRACIONES ASISTIDAS EN 1 CLIC',
       tab1ClickDesc: 'Presiona un botón para registrar dbridge automáticamente en la configuración de tu asistente IA.',
       installClaudeBtn: 'CONFIGURAR CLAUDE DESKTOP',
-      installVSCodeBtn: 'CONFIGURAR VS CODE (.vscode/mcp.json)',
+      installVSCodeBtn: 'CONFIGURAR VS CODE',
+      installVSCodeCommandBtn: 'CONFIGURAR VS CODE (MODO COMANDO / STDIO)',
+      installVSCodeSseBtn: 'CONFIGURAR VS CODE (MODO RED / SSE)',
+      vscodeModeCommand: 'MODO COMANDO CLI (STDIO - RECOMENDADO PARA COPILOT / EN PATH)',
+      vscodeModeSse: 'MODO RED SSE (REQUIERE LA APP DBRIDGE ABIERTA)',
       installCursorBtn: 'CONFIGURAR CURSOR (~/.cursor/mcp.json)',
       manualEndpointsTitle: 'ENDPOINTS DE RED ACTIVOS',
       sseEndpointLabel: 'URL DE PROTOCOLO SSE:',
-      httpEndpointLabel: 'URL DIRECTA HTTP/JSON-RPC:',
+      httpEndpointLabel: 'DIRECTA HTTP/JSON-RPC:',
       cliStdioTitle: 'COMANDO CLI MODO STDIO',
       vscodeGuideTitle: 'CONFIGURACIÓN PARA VS CODE Y GITHUB COPILOT',
-      vscodeGuideStep1: '1. En VS Code, los servidores MCP se configuran en .vscode/mcp.json en tu workspace.',
-      vscodeGuideStep2: '2. Pulsa el botón de configuración automática en 1-clic o agrega este bloque a tu archivo:',
+      vscodeGuideStep1: '1. En VS Code, podés conectar el MCP mediante Comando CLI (stdio) o vía URL SSE en tu mcp.json global (%APPDATA%\\Code\\User\\mcp.json).',
+      vscodeGuideStep2: '2. Pulsa cualquiera de los botones de configuración automática o agrega el bloque JSON que prefieras:',
       intellijGuideTitle: 'CONFIGURACIÓN PARA INTELLIJ IDEA (WINDOWS & MACOS)',
       intellijGuideDesc: 'Configura dbridge en IntelliJ IDEA mediante el menú Model Context Protocol:',
       intellijStep1: '1. Abre Preferencias (Ctrl+Alt+S en Windows / Cmd+, en macOS) -> Tools -> Model Context Protocol (MCP).',

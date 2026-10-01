@@ -69,8 +69,8 @@ func TestAutoConfigureVSCodeWorkspace_PreservesExisting(t *testing.T) {
 		t.Fatalf("failed to write initial config: %v", err)
 	}
 
-	// Run configuration
-	msg, err := AutoConfigureVSCodeWorkspace(tempDir, 9090)
+	// Run configuration with SSE
+	msg, err := AutoConfigureVSCodeWorkspace(tempDir, "sse", 9090)
 	if err != nil {
 		t.Fatalf("AutoConfigureVSCodeWorkspace failed: %v", err)
 	}
@@ -108,5 +108,20 @@ func TestAutoConfigureVSCodeWorkspace_PreservesExisting(t *testing.T) {
 
 	if dbridge["url"] != "http://localhost:9090/sse" {
 		t.Errorf("expected URL http://localhost:9090/sse, got: %v", dbridge["url"])
+	}
+
+	// Now reconfigure with "command" (stdio mode) and verify it updates in place
+	_, err = AutoConfigureVSCodeWorkspace(tempDir, "command", 9090)
+	if err != nil {
+		t.Fatalf("AutoConfigureVSCodeWorkspace command mode failed: %v", err)
+	}
+
+	dataCmd, _ := os.ReadFile(mcpPath)
+	var updatedCmd map[string]interface{}
+	_ = json.Unmarshal(dataCmd, &updatedCmd)
+	cmdServers := updatedCmd["servers"].(map[string]interface{})
+	dbridgeCmd := cmdServers["dbridge-oracle"].(map[string]interface{})
+	if dbridgeCmd["command"] == "" {
+		t.Errorf("expected command to be populated in command mode: %+v", dbridgeCmd)
 	}
 }

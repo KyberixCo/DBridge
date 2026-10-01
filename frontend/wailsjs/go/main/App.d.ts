@@ -6,7 +6,7 @@ export function AutoConfigureClaude():Promise<string>;
 
 export function AutoConfigureCursor():Promise<string>;
 
-export function AutoConfigureVSCode(arg1:string):Promise<string>;
+export function AutoConfigureVSCode(arg1:string,arg2:string):Promise<string>;
 
 export function ClearAuditLogs():Promise<void>;
 
