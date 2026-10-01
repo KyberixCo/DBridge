@@ -128,11 +128,16 @@ export interface Translations {
     saveScriptBtn: string;
     saveAsScriptBtn: string;
     runCurrentBtn: string;
+    runSelectionBtn: string;
     runStepBtn: string;
     runScriptBtn: string;
     statementCounter: (curr: number, total: number) => string;
     scriptResultsTitle: string;
     noFileLoaded: string;
+    cursorPos: (line: number, col: number) => string;
+    statementsDetected: (count: number) => string;
+    clearBuffer: string;
+    shortcutHint: string;
   };
   security: {
     subsystem: string;
@@ -373,12 +378,17 @@ export const translations: Record<Language, Translations> = {
       openScriptBtn: 'OPEN .SQL SCRIPT...',
       saveScriptBtn: 'SAVE SCRIPT',
       saveAsScriptBtn: 'SAVE AS...',
-      runCurrentBtn: 'RUN CURRENT (CMD+ENTER)',
-      runStepBtn: 'STEP & NEXT ▶',
-      runScriptBtn: 'RUN ALL SCRIPT ⚡',
+      runCurrentBtn: 'EXECUTE',
+      runSelectionBtn: 'EXECUTE SELECTION',
+      runStepBtn: 'STEP & NEXT',
+      runScriptBtn: 'RUN SCRIPT',
       statementCounter: (curr, total) => `STMT ${curr} OF ${total}`,
       scriptResultsTitle: 'SCRIPT EXECUTION RESULTS',
       noFileLoaded: 'UNSAVED BUFFER',
+      cursorPos: (line, col) => `Ln ${line}, Col ${col}`,
+      statementsDetected: (count) => `${count} statement${count === 1 ? '' : 's'}`,
+      clearBuffer: 'CLEAR',
+      shortcutHint: '⌘↵ Run • ⌘⇧↵ All',
     },
     security: {
       subsystem: '// SUB-SYSTEM: MCP_FIREWALL',
@@ -617,12 +627,17 @@ export const translations: Record<Language, Translations> = {
       openScriptBtn: 'ABRIR SCRIPT .SQL...',
       saveScriptBtn: 'GUARDAR SCRIPT',
       saveAsScriptBtn: 'GUARDAR COMO...',
-      runCurrentBtn: 'EJECUTAR ACTUAL (CMD+ENTER)',
-      runStepBtn: 'PASO Y SIGUIENTE ▶',
-      runScriptBtn: 'EJECUTAR TODO EL SCRIPT ⚡',
+      runCurrentBtn: 'EJECUTAR',
+      runSelectionBtn: 'EJECUTAR SELECCIÓN',
+      runStepBtn: 'PASO A PASO',
+      runScriptBtn: 'TODO EL SCRIPT',
       statementCounter: (curr, total) => `SENTENCIA ${curr} DE ${total}`,
       scriptResultsTitle: 'RESULTADOS DEL SCRIPT',
       noFileLoaded: 'BUFFER SIN GUARDAR',
+      cursorPos: (line, col) => `Lín ${line}, Col ${col}`,
+      statementsDetected: (count) => `${count} sentencia${count === 1 ? '' : 's'}`,
+      clearBuffer: 'LIMPIAR',
+      shortcutHint: '⌘↵ Ejecutar • ⌘⇧↵ Todo el script',
     },
     security: {
       subsystem: '// SUB-SISTEMA: MCP_FIREWALL',

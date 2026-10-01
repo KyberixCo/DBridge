@@ -17,6 +17,9 @@ import {
   FileCode,
   StepForward,
   Zap,
+  Maximize2,
+  Minimize2,
+  Trash2,
 } from 'lucide-react';
 import { models } from '../../wailsjs/go/models';
 import {
@@ -235,6 +238,8 @@ END;`
   const [tableColumns, setTableColumns] = useState<models.ColumnInfo[]>([]);
   const [loadingCols, setLoadingCols] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [hasSelection, setHasSelection] = useState<boolean>(false);
+  const [isExpandedEditor, setIsExpandedEditor] = useState<boolean>(false);
 
   // Parse SQL statements for step-by-step execution
   const statements = useMemo(() => parseSQLStatements(sqlCode), [sqlCode]);
@@ -250,9 +255,21 @@ END;`
 
   const updateCursorPos = () => {
     if (textareaRef.current) {
-      setCursorPos(textareaRef.current.selectionStart || 0);
+      const start = textareaRef.current.selectionStart || 0;
+      const end = textareaRef.current.selectionEnd || 0;
+      setCursorPos(start);
+      setHasSelection(end > start);
     }
   };
+
+  const cursorLineCol = useMemo(() => {
+    const currentCode = mode === 'sql' ? sqlCode : plsqlCode;
+    const textBefore = currentCode.slice(0, cursorPos);
+    const lines = textBefore.split('\n');
+    const line = lines.length;
+    const col = lines[lines.length - 1].length + 1;
+    return { line, col };
+  }, [cursorPos, sqlCode, plsqlCode, mode]);
 
   const selectStatement = (stmt: SQLStatement) => {
     if (textareaRef.current) {
@@ -674,87 +691,128 @@ END;`
 
       {/* Main Studio Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Editor Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-[#0c0c0c] border-b border-[#2e2e2e]">
-          {/* Mode Switcher & Script File Actions */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setMode('sql')}
-              className={`brutal-button ${
-                mode === 'sql' ? 'brutal-button--acid' : 'brutal-button--ghost'
-              } min-h-[30px] py-1 px-3 text-xs`}
-            >
-              <Database className="w-3.5 h-3.5" />
-              <span>{t.queryStudio.tabSql}</span>
-            </button>
-            <button
-              onClick={() => setMode('plsql')}
-              className={`brutal-button ${
-                mode === 'plsql' ? 'brutal-button--purple' : 'brutal-button--ghost'
-              } min-h-[30px] py-1 px-3 text-xs`}
-            >
-              <Terminal className="w-3.5 h-3.5" />
-              <span>{t.queryStudio.tabPlsql}</span>
-            </button>
+        {/* Editor Tactical Header Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-1.5 bg-[#0a0a0a] border-b border-[#2e2e2e] select-none">
+          {/* Left Group: Mode Segmented Switcher & File Hub */}
+          <div className="flex items-center gap-3">
+            {/* Segmented Control for SQL / PL/SQL */}
+            <div className="inline-flex p-0.5 bg-[#141414] border border-[#2e2e2e]">
+              <button
+                type="button"
+                onClick={() => setMode('sql')}
+                className={`px-3 py-1 text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  mode === 'sql'
+                    ? 'bg-[#d9ff3f] text-[#050505] shadow-[2px_2px_0_#383838]'
+                    : 'text-[#a7a49c] hover:text-[#f2efe6] hover:bg-[#1f1f1f]'
+                }`}
+                title={t.queryStudio.tabSql}
+              >
+                <Database className="w-3.5 h-3.5 shrink-0" />
+                <span>SQL</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('plsql')}
+                className={`px-3 py-1 text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  mode === 'plsql'
+                    ? 'bg-[#a855f7] text-[#050505] shadow-[2px_2px_0_#383838]'
+                    : 'text-[#a7a49c] hover:text-[#f2efe6] hover:bg-[#1f1f1f]'
+                }`}
+                title={t.queryStudio.tabPlsql}
+              >
+                <Terminal className="w-3.5 h-3.5 shrink-0" />
+                <span>PL/SQL</span>
+              </button>
+            </div>
 
-            {/* Script File Controls */}
+            {/* Script File Dock (SQL mode only) */}
             {mode === 'sql' && (
-              <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-[#2e2e2e]">
+              <div className="flex items-center border border-[#2e2e2e] bg-[#121212] font-mono text-xs">
+                {/* File Badge / Name */}
+                <div
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-[#f2efe6] max-w-[200px] truncate border-r border-[#2e2e2e]"
+                  title={scriptFilePath || t.queryStudio.noFileLoaded}
+                >
+                  <FileCode className="w-3.5 h-3.5 text-[#d9ff3f] shrink-0" />
+                  <span className="truncate text-[11px] font-semibold">
+                    {scriptFileName || t.queryStudio.noFileLoaded}
+                  </span>
+                </div>
+
+                {/* Open file */}
                 <button
+                  type="button"
                   onClick={handleOpenScript}
-                  className="brutal-button brutal-button--ghost min-h-[30px] py-1 px-2.5 text-xs"
+                  className="p-1.5 text-[#a7a49c] hover:text-[#d9ff3f] hover:bg-[#1c1c1c] transition-colors cursor-pointer border-r border-[#2e2e2e]"
                   title={t.queryStudio.openScriptBtn}
                 >
-                  <FolderOpen className="w-3.5 h-3.5 text-[#d9ff3f]" />
-                  <span className="hidden xl:inline">{t.queryStudio.openScriptBtn}</span>
+                  <FolderOpen className="w-3.5 h-3.5" />
                 </button>
 
+                {/* Save file */}
                 <button
+                  type="button"
                   onClick={() => handleSaveScript(false)}
-                  className="brutal-button brutal-button--ghost min-h-[30px] py-1 px-2 text-xs"
+                  className="p-1.5 text-[#a7a49c] hover:text-[#d9ff3f] hover:bg-[#1c1c1c] transition-colors cursor-pointer"
                   title={t.queryStudio.saveScriptBtn}
                 >
                   <Save className="w-3.5 h-3.5" />
-                  <span className="hidden xl:inline">{t.queryStudio.saveScriptBtn}</span>
                 </button>
 
+                {/* Save As (if file has path) */}
                 {scriptFilePath && (
                   <button
+                    type="button"
                     onClick={() => handleSaveScript(true)}
-                    className="brutal-button brutal-button--ghost min-h-[30px] py-1 px-2 text-[11px] text-[#a7a49c]"
+                    className="px-2 py-1 text-[10px] text-[#a7a49c] hover:text-[#f2efe6] hover:bg-[#1c1c1c] border-l border-[#2e2e2e] transition-colors cursor-pointer uppercase font-bold"
                     title={t.queryStudio.saveAsScriptBtn}
                   >
-                    <span>{t.queryStudio.saveAsScriptBtn}</span>
+                    {t.queryStudio.saveAsScriptBtn}
                   </button>
                 )}
-
-                {/* File Badge */}
-                <div
-                  className="flex items-center gap-1 px-2 py-1 bg-[#121212] border border-[#2e2e2e] text-[11px] font-mono text-[#a7a49c] max-w-[180px] truncate"
-                  title={scriptFilePath || t.queryStudio.noFileLoaded}
-                >
-                  <FileCode className="w-3 h-3 text-[#d9ff3f] shrink-0" />
-                  <span className="truncate">{scriptFileName || t.queryStudio.noFileLoaded}</span>
-                </div>
               </div>
             )}
           </div>
 
-          {/* Stepped & Script Execution Controls */}
+          {/* Right Group: Unified Execution Engine */}
           <div className="flex items-center gap-2">
-            {mode === 'sql' && statements.length > 0 && currentStmt && (
-              <div className="px-2 py-1 bg-[#171717] border border-[#2e2e2e] font-mono text-[10px] text-[#d9ff3f] font-bold">
-                {t.queryStudio.statementCounter(currentStmt.index + 1, statements.length)}
+            {/* Secondary Execution Group (SQL mode only) */}
+            {mode === 'sql' && (
+              <div className="flex items-center border border-[#2e2e2e] bg-[#121212]">
+                {/* Step & Next */}
+                <button
+                  type="button"
+                  onClick={handleExecuteStepAndAdvance}
+                  disabled={isRunning || !activeConnection || statements.length === 0}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-bold text-[#f2efe6] hover:text-[#d9ff3f] hover:bg-[#1a1a1a] transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer border-r border-[#2e2e2e]"
+                  title="Ejecutar sentencia actual y avanzar cursor (Paso a paso)"
+                >
+                  <StepForward className="w-3.5 h-3.5 text-[#d9ff3f]" />
+                  <span>{t.queryStudio.runStepBtn}</span>
+                </button>
+
+                {/* Run All Script */}
+                <button
+                  type="button"
+                  onClick={handleExecuteAllScript}
+                  disabled={isRunning || !activeConnection || statements.length === 0}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-bold text-[#f2efe6] hover:text-[#fbbf24] hover:bg-[#1a1a1a] transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  title="Ejecutar todas las sentencias en secuencia (⌘⇧↵)"
+                >
+                  <Zap className="w-3.5 h-3.5 text-[#fbbf24] fill-current" />
+                  <span>{t.queryStudio.runScriptBtn}</span>
+                </button>
               </div>
             )}
 
-            {/* Run Current / Selection */}
+            {/* Primary HERO Action Button */}
             <button
+              type="button"
               onClick={handleExecuteCurrent}
               disabled={isRunning || !activeConnection}
               className={`brutal-button ${
                 mode === 'sql' ? 'brutal-button--acid' : 'brutal-button--purple'
-              } min-h-[32px] py-1 px-3 text-xs font-black`}
+              } min-h-[32px] py-1 px-3 text-xs font-black shadow-[2px_2px_0_#383838] flex items-center gap-2`}
               title="Cmd/Ctrl + Enter"
             >
               {isRunning ? (
@@ -766,42 +824,27 @@ END;`
                 <>
                   <Play className="w-3.5 h-3.5 fill-current" />
                   <span>
-                    {mode === 'sql' ? t.queryStudio.runCurrentBtn : t.queryStudio.runPlsqlBtn}
+                    {mode === 'sql'
+                      ? hasSelection
+                        ? t.queryStudio.runSelectionBtn
+                        : t.queryStudio.runCurrentBtn
+                      : t.queryStudio.runPlsqlBtn}
+                  </span>
+                  <span className="ml-0.5 px-1 py-0.2 bg-black/20 text-[9px] font-mono font-bold tracking-tight rounded">
+                    ⌘↵
                   </span>
                 </>
               )}
             </button>
-
-            {/* Step & Next (SQL mode only) */}
-            {mode === 'sql' && (
-              <button
-                onClick={handleExecuteStepAndAdvance}
-                disabled={isRunning || !activeConnection || statements.length === 0}
-                className="brutal-button brutal-button--ghost min-h-[32px] py-1 px-3 text-xs font-bold text-[#d9ff3f] border-[#d9ff3f]/50 hover:border-[#d9ff3f]"
-                title="Execute current statement and move cursor to next"
-              >
-                <StepForward className="w-3.5 h-3.5" />
-                <span>{t.queryStudio.runStepBtn}</span>
-              </button>
-            )}
-
-            {/* Run All Script (SQL mode only) */}
-            {mode === 'sql' && (
-              <button
-                onClick={handleExecuteAllScript}
-                disabled={isRunning || !activeConnection || statements.length === 0}
-                className="brutal-button brutal-button--ghost min-h-[32px] py-1 px-3 text-xs font-bold text-[#fbbf24] border-[#fbbf24]/50 hover:border-[#fbbf24]"
-                title="Execute all statements sequentially (Cmd/Ctrl + Shift + Enter)"
-              >
-                <Zap className="w-3.5 h-3.5 fill-current" />
-                <span>{t.queryStudio.runScriptBtn}</span>
-              </button>
-            )}
           </div>
         </div>
 
         {/* Code Editor Panel */}
-        <div className="h-52 border-b border-[#2e2e2e] bg-[#000000] relative flex">
+        <div
+          className={`${
+            isExpandedEditor ? 'h-80' : 'h-48'
+          } bg-[#000000] relative flex transition-all duration-150`}
+        >
           <textarea
             ref={textareaRef}
             value={mode === 'sql' ? sqlCode : plsqlCode}
@@ -819,9 +862,60 @@ END;`
                 ? 'SELECT * FROM ...;\nSELECT * FROM ...;'
                 : 'BEGIN\n  DBMS_OUTPUT.PUT_LINE(...);\nEND;'
             }
-            className="w-full h-full p-4 font-mono text-xs text-[#f2efe6] bg-transparent resize-none focus:outline-none leading-relaxed selection:bg-[#d9ff3f] selection:text-black"
+            className="w-full h-full p-3.5 font-mono text-xs text-[#f2efe6] bg-transparent resize-none focus:outline-none leading-relaxed selection:bg-[#d9ff3f] selection:text-black"
             spellCheck={false}
           />
+        </div>
+
+        {/* Tactical Editor Status Bar */}
+        <div className="bg-[#0c0c0c] border-y border-[#2e2e2e] px-3 py-1 flex items-center justify-between text-[10px] font-mono text-[#a7a49c] select-none">
+          {/* Left: Position & Statement context */}
+          <div className="flex items-center gap-3">
+            <span>{t.queryStudio.cursorPos(cursorLineCol.line, cursorLineCol.col)}</span>
+            <span className="text-[#383838]">|</span>
+            {mode === 'sql' && (
+              <>
+                <span>{t.queryStudio.statementsDetected(statements.length)}</span>
+                {statements.length > 0 && currentStmt && (
+                  <span className="px-1.5 py-0.2 bg-[#171717] border border-[#2e2e2e] text-[#d9ff3f] font-bold">
+                    {t.queryStudio.statementCounter(currentStmt.index + 1, statements.length)}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Right: Quick actions & resize */}
+          <div className="flex items-center gap-3">
+            <span className="text-[#737373] hidden sm:inline">
+              {t.queryStudio.shortcutHint}
+            </span>
+            <span className="text-[#383838] hidden sm:inline">|</span>
+            <button
+              type="button"
+              onClick={() => {
+                if (mode === 'sql') setSqlCode('');
+                else setPlsqlCode('');
+              }}
+              className="text-[#a7a49c] hover:text-[#fb7185] transition-colors cursor-pointer"
+              title="Limpiar editor"
+            >
+              {t.queryStudio.clearBuffer}
+            </button>
+            <span className="text-[#383838]">|</span>
+            <button
+              type="button"
+              onClick={() => setIsExpandedEditor(!isExpandedEditor)}
+              className="text-[#a7a49c] hover:text-[#d9ff3f] transition-colors cursor-pointer flex items-center gap-1"
+              title={isExpandedEditor ? 'Reducir editor' : 'Expandir editor'}
+            >
+              {isExpandedEditor ? (
+                <Minimize2 className="w-3 h-3" />
+              ) : (
+                <Maximize2 className="w-3 h-3" />
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Multi-Query Stepped Results Tab Bar */}
@@ -889,13 +983,27 @@ END;`
             )}
           </div>
 
-          {/* Action buttons (Copy / CSV) */}
+          {/* Action buttons (Copy / CSV / Clear Console) */}
           <div className="flex items-center gap-2">
+            {mode === 'plsql' && plsqlResult && (
+              <button
+                type="button"
+                onClick={() => setPlsqlResult(null)}
+                className="brutal-button brutal-button--ghost py-0.5 px-2 min-h-[26px] text-[10px] flex items-center gap-1.5"
+                title={t.queryStudio.clearConsole}
+              >
+                <Trash2 className="w-3 h-3 text-[#a7a49c]" />
+                <span>{t.queryStudio.clearConsole}</span>
+              </button>
+            )}
+
             {queryResult && queryResult.rows && queryResult.rows.length > 0 && (
               <>
                 <button
+                  type="button"
                   onClick={copyResults}
-                  className="brutal-button brutal-button--ghost py-0.5 px-2 min-h-[26px] text-[10px]"
+                  className="brutal-button brutal-button--ghost py-0.5 px-2 min-h-[26px] text-[10px] flex items-center gap-1.5"
+                  title="Copy JSON"
                 >
                   {isCopied ? (
                     <Check className="w-3 h-3 text-[#d9ff3f]" />
@@ -905,8 +1013,10 @@ END;`
                   <span>{isCopied ? t.common.copied : 'JSON'}</span>
                 </button>
                 <button
+                  type="button"
                   onClick={handleExportCSV}
-                  className="brutal-button brutal-button--acid py-0.5 px-2 min-h-[26px] text-[10px]"
+                  className="brutal-button brutal-button--acid py-0.5 px-2 min-h-[26px] text-[10px] flex items-center gap-1.5 font-black"
+                  title={t.queryStudio.exportCsvBtn}
                 >
                   <Download className="w-3 h-3" />
                   <span>{t.queryStudio.exportCsvBtn}</span>
