@@ -294,18 +294,27 @@ func (s *MCPServer) handleDirectMCP(w http.ResponseWriter, r *http.Request) {
 
 // RunStdio reads from stdin and writes to stdout for CLI MCP mode.
 func (s *MCPServer) RunStdio(ctx context.Context) error {
+	fmt.Fprintln(os.Stderr, "dbridge: MCP stdio server listening...")
 	scanner := bufio.NewScanner(os.Stdin)
+	buf := make([]byte, 64*1024)
+	scanner.Buffer(buf, 10*1024*1024)
+
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		if len(strings.TrimSpace(string(line))) == 0 {
+		trimmed := strings.TrimSpace(string(line))
+		if len(trimmed) == 0 {
 			continue
 		}
-		resp := s.ProcessJSONRPC(ctx, line, "stdio")
+		resp := s.ProcessJSONRPC(ctx, []byte(trimmed), "stdio")
 		if len(resp) > 0 {
 			fmt.Printf("%s\n", string(resp))
 		}
 	}
-	return scanner.Err()
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "dbridge: stdio error: %v\n", err)
+		return err
+	}
+	return nil
 }
 
 // ProcessJSONRPC processes an incoming JSON-RPC payload and returns the response.
@@ -336,6 +345,9 @@ func (s *MCPServer) ProcessJSONRPC(ctx context.Context, data []byte, clientInfo 
 				"resources": map[string]interface{}{
 					"listChanged": false,
 				},
+				"prompts": map[string]interface{}{
+					"listChanged": false,
+				},
 			},
 			"serverInfo": map[string]interface{}{
 				"name":    "dbridge-server",
@@ -344,7 +356,7 @@ func (s *MCPServer) ProcessJSONRPC(ctx context.Context, data []byte, clientInfo 
 		}
 		return s.makeResponse(req.ID, res, nil)
 
-	case "notifications/initialized":
+	case "notifications/initialized", "initialized":
 		return nil
 
 	case "ping":
@@ -375,7 +387,20 @@ func (s *MCPServer) ProcessJSONRPC(ctx context.Context, data []byte, clientInfo 
 		resources := s.getResourcesList(ctx)
 		return s.makeResponse(req.ID, map[string]interface{}{"resources": resources}, nil)
 
+	case "resources/templates/list":
+		return s.makeResponse(req.ID, map[string]interface{}{"resourceTemplates": []interface{}{}}, nil)
+
+	case "prompts/list":
+		return s.makeResponse(req.ID, map[string]interface{}{"prompts": []interface{}{}}, nil)
+
+	case "logging/setLevel":
+		return s.makeResponse(req.ID, map[string]interface{}{}, nil)
+
 	default:
+		// If it's a notification without ID, never return an error per JSON-RPC 2.0 specification
+		if req.ID == nil {
+			return nil
+		}
 		return s.makeResponse(req.ID, nil, &RPCError{
 			Code:    -32601,
 			Message: fmt.Sprintf("Method '%s' not found", req.Method),

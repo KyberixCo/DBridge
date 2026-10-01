@@ -25,10 +25,13 @@ var assets embed.FS
 func main() {
 	// Check for headless stdio MCP server mode (e.g. `dbridge --mcp` or `dbridge stdio`)
 	if len(os.Args) > 1 {
-		arg := strings.ToLower(os.Args[1])
-		if arg == "--mcp" || arg == "-mcp" || arg == "mcp" || arg == "stdio" || arg == "--stdio" || arg == "-stdio" || arg == "/mcp" {
-			runStdioMCP()
-			return
+		for _, rawArg := range os.Args[1:] {
+			arg := strings.ToLower(strings.TrimSpace(rawArg))
+			if arg == "--mcp" || arg == "-mcp" || arg == "mcp" || arg == "stdio" || arg == "--stdio" || arg == "-stdio" || arg == "/mcp" {
+				initConsole()
+				runStdioMCP()
+				return
+			}
 		}
 	}
 

@@ -247,6 +247,9 @@ func AutoConfigureVSCodeWorkspace(targetDir string, transport string, port int) 
 			if runtime.GOOS == "windows" {
 				commandName = "dbridge.exe"
 			}
+			if execPath, err := os.Executable(); err == nil && execPath != "" {
+				commandName = execPath
+			}
 			targetMap["dbridge-oracle"] = map[string]interface{}{
 				"command": commandName,
 				"args":    []string{"--mcp"},

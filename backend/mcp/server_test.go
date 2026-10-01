@@ -78,4 +78,43 @@ func TestMCPServer_ProcessJSONRPC(t *testing.T) {
 	} else if entries[0].Allowed {
 		t.Errorf("Audit entry should show Allowed=false")
 	}
+
+	// 4. Test prompts/list
+	promptsReq := `{"jsonrpc":"2.0","id":4,"method":"prompts/list"}`
+	resp = server.ProcessJSONRPC(ctx, []byte(promptsReq), "test")
+	var promptsResp map[string]interface{}
+	if err := json.Unmarshal(resp, &promptsResp); err != nil {
+		t.Fatalf("Failed to unmarshal prompts/list response: %v", err)
+	}
+	if promptsResp["error"] != nil {
+		t.Errorf("Expected prompts/list to succeed, got error: %v", promptsResp["error"])
+	}
+
+	// 5. Test resources/templates/list
+	tmplReq := `{"jsonrpc":"2.0","id":5,"method":"resources/templates/list"}`
+	resp = server.ProcessJSONRPC(ctx, []byte(tmplReq), "test")
+	var tmplResp map[string]interface{}
+	if err := json.Unmarshal(resp, &tmplResp); err != nil {
+		t.Fatalf("Failed to unmarshal resources/templates/list response: %v", err)
+	}
+	if tmplResp["error"] != nil {
+		t.Errorf("Expected resources/templates/list to succeed, got error: %v", tmplResp["error"])
+	}
+
+	// 6. Test initialized notification returns nil
+	initNotif := `{"jsonrpc":"2.0","method":"notifications/initialized"}`
+	if r := server.ProcessJSONRPC(ctx, []byte(initNotif), "test"); len(r) > 0 {
+		t.Errorf("Expected notifications/initialized to produce no response, got: %s", string(r))
+	}
+
+	initNotif2 := `{"jsonrpc":"2.0","method":"initialized"}`
+	if r := server.ProcessJSONRPC(ctx, []byte(initNotif2), "test"); len(r) > 0 {
+		t.Errorf("Expected initialized to produce no response, got: %s", string(r))
+	}
+
+	// 7. Unknown notification without id returns nil per JSON-RPC 2.0
+	unknownNotif := `{"jsonrpc":"2.0","method":"random/notification"}`
+	if r := server.ProcessJSONRPC(ctx, []byte(unknownNotif), "test"); len(r) > 0 {
+		t.Errorf("Expected unknown notification to produce no response, got: %s", string(r))
+	}
 }
