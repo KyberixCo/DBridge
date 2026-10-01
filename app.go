@@ -1,0 +1,237 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+
+	"oramcp/backend/audit"
+	"oramcp/backend/integrations"
+	"oramcp/backend/mcp"
+	"oramcp/backend/models"
+	"oramcp/backend/oracle"
+	"oramcp/backend/security"
+	"oramcp/backend/storage"
+)
+
+// App struct manages application state and exposes methods to Wails frontend.
+type App struct {
+	ctx        context.Context
+	configMgr  *storage.ConfigManager
+	oracleMgr  *oracle.ClientManager
+	auditMgr   *audit.AuditManager
+	mcpServer  *mcp.MCPServer
+}
+
+// NewApp creates a new App application struct.
+func NewApp() *App {
+	cfg, err := storage.NewConfigManager()
+	if err != nil {
+		fmt.Printf("Warning: Failed to load config: %v\n", err)
+	}
+
+	ora := oracle.NewClientManager()
+	aud := audit.NewAuditManager(500)
+	srv := mcp.NewMCPServer(cfg, ora, aud)
+
+	return &App{
+		configMgr: cfg,
+		oracleMgr: ora,
+		auditMgr:  aud,
+		mcpServer: srv,
+	}
+}
+
+// startup is called when the app starts.
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+
+	// Hook audit listener to emit live frontend events
+	a.auditMgr.AddListener(func(entry models.AuditLogEntry) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "mcp:audit", entry)
+		}
+	})
+
+	// Start local MCP HTTP/SSE server
+	port := a.configMgr.GetMCPPort()
+	if err := a.mcpServer.StartHTTP(port); err != nil {
+		fmt.Printf("Error starting MCP HTTP server: %v\n", err)
+	} else {
+		fmt.Printf("MCP HTTP/SSE server started on port %d\n", port)
+	}
+}
+
+// shutdown is called when the app closes.
+func (a *App) shutdown(ctx context.Context) {
+	if a.mcpServer != nil {
+		_ = a.mcpServer.StopHTTP()
+	}
+}
+
+// --- Connection Management ---
+
+func (a *App) GetConnections() []models.ConnectionProfile {
+	return a.configMgr.GetConnections()
+}
+
+func (a *App) SaveConnection(profile models.ConnectionProfile) (*models.ConnectionProfile, error) {
+	if profile.ID == "" {
+		profile.ID = fmt.Sprintf("conn-%d", time.Now().UnixNano())
+		profile.CreatedAt = time.Now()
+	}
+	profile.UpdatedAt = time.Now()
+
+	// Invalidate any existing pool if host/user changed
+	a.oracleMgr.InvalidatePool(profile.ID)
+
+	if err := a.configMgr.SaveConnection(profile); err != nil {
+		return nil, err
+	}
+	return &profile, nil
+}
+
+func (a *App) DeleteConnection(id string) error {
+	a.oracleMgr.InvalidatePool(id)
+	return a.configMgr.DeleteConnection(id)
+}
+
+func (a *App) SetActiveConnection(id string) error {
+	return a.configMgr.SetActiveConnection(id)
+}
+
+func (a *App) GetActiveConnection() *models.ConnectionProfile {
+	return a.configMgr.GetActiveConnection()
+}
+
+func (a *App) TestConnection(profile models.ConnectionProfile) models.ConnectionTestResult {
+	if profile.Password == "" && profile.ID != "" {
+		if existing := a.configMgr.GetConnectionWithSecret(profile.ID); existing != nil && existing.Password != "" {
+			profile.Password = existing.Password
+		}
+	}
+	return a.oracleMgr.TestConnection(profile)
+}
+
+// --- Database Operations ---
+
+func (a *App) resolveConnection(connID string) (*models.ConnectionProfile, error) {
+	if connID != "" {
+		conn := a.configMgr.GetConnectionWithSecret(connID)
+		if conn != nil {
+			return conn, nil
+		}
+	}
+	active := a.configMgr.GetActiveConnection()
+	if active == nil {
+		return nil, fmt.Errorf("no Oracle connection available. Please configure and select a connection.")
+	}
+	return active, nil
+}
+
+func (a *App) GetSchemaObjects(connID string) (*models.SchemaInfo, error) {
+	conn, err := a.resolveConnection(connID)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.oracleMgr.GetSchemaObjects(ctx, *conn)
+}
+
+func (a *App) GetTableSchema(connID string, tableName string) ([]models.ColumnInfo, error) {
+	conn, err := a.resolveConnection(connID)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.oracleMgr.GetTableSchema(ctx, *conn, tableName)
+}
+
+func (a *App) ExecuteQuery(connID string, query string, maxRows int) (*models.QueryResult, error) {
+	conn, err := a.resolveConnection(connID)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	return a.oracleMgr.ExecuteQuery(ctx, *conn, query, maxRows)
+}
+
+func (a *App) ExecutePLSQL(connID string, block string) (*models.PLSQLResult, error) {
+	conn, err := a.resolveConnection(connID)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	return a.oracleMgr.ExecutePLSQL(ctx, *conn, block)
+}
+
+// --- Security & Policy Management ---
+
+func (a *App) GetSecurityPolicy() models.SecurityPolicy {
+	return a.configMgr.GetSecurityPolicy()
+}
+
+func (a *App) SaveSecurityPolicy(policy models.SecurityPolicy) error {
+	return a.configMgr.SaveSecurityPolicy(policy)
+}
+
+func (a *App) ValidateQueryTest(query string) map[string]interface{} {
+	policy := a.configMgr.GetSecurityPolicy()
+	allowed, reason := security.ValidateQuery(query, policy)
+	return map[string]interface{}{
+		"allowed": allowed,
+		"reason":  reason,
+	}
+}
+
+// --- MCP Server & Audit Management ---
+
+func (a *App) GetMCPServerStatus() models.MCPServerStatus {
+	return a.mcpServer.GetStatus()
+}
+
+func (a *App) RestartMCPServer(port int) error {
+	_ = a.mcpServer.StopHTTP()
+	if port <= 0 {
+		port = a.configMgr.GetMCPPort()
+	}
+	_ = a.configMgr.SetMCPPort(port)
+	return a.mcpServer.StartHTTP(port)
+}
+
+func (a *App) GetAuditLogs() []models.AuditLogEntry {
+	return a.auditMgr.GetEntries()
+}
+
+func (a *App) ClearAuditLogs() error {
+	a.auditMgr.Clear()
+	return nil
+}
+
+// --- Assisted & Automated Client Integrations ---
+
+func (a *App) AutoConfigureClaude() (string, error) {
+	port := a.configMgr.GetMCPPort()
+	return integrations.AutoConfigureClaude(port)
+}
+
+func (a *App) AutoConfigureVSCode(targetDir string) (string, error) {
+	port := a.configMgr.GetMCPPort()
+	return integrations.AutoConfigureVSCodeWorkspace(targetDir, port)
+}
+
+func (a *App) AutoConfigureCursor() (string, error) {
+	port := a.configMgr.GetMCPPort()
+	return integrations.AutoConfigureCursor(port)
+}
+

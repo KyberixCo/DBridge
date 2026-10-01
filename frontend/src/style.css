@@ -1,0 +1,233 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #050505;
+  --panel: #0c0c0c;
+  --panel-card: #121212;
+  --panel-hover: #171717;
+  --paper: #f2efe6;
+  --muted: #a7a49c;
+  --line: #2e2e2e;
+  --line-bright: #4a4a4a;
+  --acid: #d9ff3f;
+  --acid-dark: #536600;
+  --crimson: #e11d48;
+  --crimson-hover: #fb7185;
+  --accent-purple: #a855f7;
+  --cyan: #38bdf8;
+  --amber: #fbbf24;
+  --grid: rgba(255, 255, 255, 0.045);
+  
+  --font-jetbrains: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-inter: "Inter", "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+@theme {
+  --font-sans: var(--font-inter), sans-serif;
+  --font-mono: var(--font-jetbrains), monospace;
+  
+  --color-ink: var(--ink);
+  --color-panel: var(--panel);
+  --color-panel-card: var(--panel-card);
+  --color-panel-hover: var(--panel-hover);
+  --color-paper: var(--paper);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-bright: var(--line-bright);
+  --color-acid: var(--acid);
+  --color-crimson: var(--crimson);
+  --color-purple: var(--accent-purple);
+  --color-cyan: var(--cyan);
+  --color-amber: var(--amber);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--ink);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--paper);
+  font-family: var(--font-sans);
+  user-select: none;
+  overflow: hidden;
+  height: 100vh;
+  color-scheme: dark;
+}
+
+::selection {
+  background: var(--acid);
+  color: var(--ink);
+}
+
+a,
+button,
+input,
+textarea,
+select {
+  border-radius: 0 !important;
+}
+
+/* Kyberix Brutalist Buttons */
+.brutal-button {
+  border: 1px solid var(--paper);
+  min-height: 38px;
+  color: var(--paper);
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.14s, box-shadow 0.14s, color 0.14s, transform 0.14s;
+  display: inline-flex;
+}
+
+.brutal-button:hover:not(:disabled) {
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 3px 3px 0 var(--line-bright);
+  transform: translate(-2px, -2px);
+}
+
+.brutal-button:active:not(:disabled) {
+  transform: translate(0, 0);
+  box-shadow: 0 0 0 transparent;
+}
+
+.brutal-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.brutal-button--acid {
+  border: 1px solid var(--acid);
+  background: var(--acid);
+  color: var(--ink);
+}
+
+.brutal-button--acid:hover:not(:disabled) {
+  background: var(--acid);
+  color: var(--ink);
+  box-shadow: 3px 3px 0 var(--paper);
+  transform: translate(-2px, -2px);
+}
+
+.brutal-button--crimson {
+  border: 1px solid var(--crimson);
+  background: var(--crimson);
+  color: #ffffff;
+}
+
+.brutal-button--crimson:hover:not(:disabled) {
+  background: var(--crimson-hover);
+  color: #050505;
+  box-shadow: 3px 3px 0 var(--paper);
+  transform: translate(-2px, -2px);
+}
+
+.brutal-button--ghost {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--paper);
+}
+
+.brutal-button--ghost:hover:not(:disabled) {
+  background: #181818;
+  border-color: var(--acid);
+  color: var(--acid);
+  box-shadow: 3px 3px 0 var(--acid);
+  transform: translate(-2px, -2px);
+}
+
+.brutal-button--purple {
+  border: 1px solid var(--accent-purple);
+  background: var(--accent-purple);
+  color: var(--ink);
+}
+
+.brutal-button--purple:hover:not(:disabled) {
+  box-shadow: 3px 3px 0 var(--paper);
+  transform: translate(-2px, -2px);
+}
+
+/* Kyberix Eyebrow */
+.eyebrow {
+  color: var(--acid);
+  font-family: var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+/* Kyberix Number Tag */
+.number-tag {
+  background: var(--acid);
+  min-width: 1.6rem;
+  height: 1.6rem;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  place-items: center;
+  font-size: 0.7rem;
+  font-weight: 900;
+  display: inline-grid;
+  padding: 0 0.35rem;
+}
+
+/* Kyberix Card Brutalism */
+.brutal-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  transition: border-color 0.14s, transform 0.14s, box-shadow 0.14s;
+  position: relative;
+}
+
+.brutal-card:hover {
+  border-color: var(--acid);
+}
+
+.brutal-card-selected {
+  border: 1px solid var(--acid) !important;
+  background: #0f1408 !important;
+  box-shadow: 3px 3px 0 var(--acid);
+}
+
+.brutal-card-selected--purple {
+  border: 1px solid var(--accent-purple) !important;
+  background: #150a1e !important;
+  box-shadow: 3px 3px 0 var(--accent-purple);
+}
+
+/* Scanlines overlay */
+.scanlines {
+  background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0.35));
+  background-size: 100% 4px;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: var(--ink);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--acid);
+}
