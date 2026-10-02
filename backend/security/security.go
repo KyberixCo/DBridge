@@ -9,29 +9,31 @@ import (
 )
 
 var (
-	// Regex to remove single line comments: -- comment
-	singleLineCommentRegex = regexp.MustCompile(`--[^\r\n]*`)
-	// Regex to remove multi-line comments: /* comment */
-	multiLineCommentRegex = regexp.MustCompile(`/\*[\s\S]*?\*/`)
-	// Regex to remove string literals: 'text' (handles escaped quotes '')
-	stringLiteralRegex = regexp.MustCompile(`'([^']|'')*'`)
+	wordRegex           = regexp.MustCompile(`[a-zA-Z_][a-zA-Z0-9_$#]*`)
+	functionCallRegex   = regexp.MustCompile(`((?:"_"|[a-zA-Z_][a-zA-Z0-9_$#]*)(?:\s*\.\s*(?:"_"|[a-zA-Z_][a-zA-Z0-9_$#]*))*)\s*\(`)
+	inspectionFunctions = map[string]bool{
+		// SQL syntax followed by parentheses, scalar functions and aggregates.
+		"AS": true, "IN": true, "EXISTS": true, "OVER": true, "AND": true, "OR": true, "NOT": true,
+		"SELECT": true, "FROM": true, "WHERE": true, "ON": true, "BY": true, "HAVING": true,
+		"COUNT": true, "SUM": true, "MIN": true, "MAX": true, "AVG": true,
+		"NVL": true, "NVL2": true, "COALESCE": true, "NULLIF": true, "DECODE": true,
+		"UPPER": true, "LOWER": true, "TRIM": true, "LTRIM": true, "RTRIM": true,
+		"LENGTH": true, "SUBSTR": true, "INSTR": true, "REPLACE": true, "CONCAT": true,
+		"ABS": true, "ROUND": true, "TRUNC": true, "CEIL": true, "FLOOR": true, "MOD": true,
+		"TO_CHAR": true, "TO_DATE": true, "TO_TIMESTAMP": true, "TO_NUMBER": true,
+		"CAST": true, "EXTRACT": true, "NUMBER": true, "VARCHAR2": true, "CHAR": true,
+		"ROW_NUMBER": true, "RANK": true, "DENSE_RANK": true, "LAG": true, "LEAD": true,
+	}
 )
 
 // SanitizeSQL removes comments and string literals so keyword detection only operates on SQL tokens.
 func SanitizeSQL(sql string) string {
-	// 1. Remove comments
-	cleaned := multiLineCommentRegex.ReplaceAllString(sql, " ")
-	cleaned = singleLineCommentRegex.ReplaceAllString(cleaned, " ")
-
-	// 2. Remove string literals to avoid false positives (e.g. WHERE status = 'DELETED')
-	cleaned = stringLiteralRegex.ReplaceAllString(cleaned, "''")
-
-	return strings.TrimSpace(cleaned)
+	cleaned, _ := scanSQL(sql)
+	return cleaned
 }
 
 // ExtractTokens returns uppercase word tokens from sanitized SQL.
 func ExtractTokens(cleanedSQL string) []string {
-	wordRegex := regexp.MustCompile(`[a-zA-Z_][a-zA-Z0-9_]*`)
 	matches := wordRegex.FindAllString(cleanedSQL, -1)
 	tokens := make([]string, len(matches))
 	for i, m := range matches {
@@ -47,7 +49,13 @@ func ValidateQuery(query string, policy models.SecurityPolicy) (bool, string) {
 		return false, "Query cannot be empty"
 	}
 
-	sanitized := SanitizeSQL(trimmed)
+	sanitized, err := scanSQL(trimmed)
+	if err != nil {
+		return false, err.Error()
+	}
+	if !singleStatement(sanitized) {
+		return false, "Only one SQL statement is permitted"
+	}
 	tokens := ExtractTokens(sanitized)
 	if len(tokens) == 0 {
 		return false, "No valid SQL tokens found in query"
@@ -56,7 +64,7 @@ func ValidateQuery(query string, policy models.SecurityPolicy) (bool, string) {
 	// 1. Read-Only Mode enforcement (Default): Only SELECT or WITH (CTE) queries allowed
 	if policy.Mode == "read_only" || policy.Mode == "" {
 		firstToken := tokens[0]
-		if firstToken != "SELECT" && firstToken != "WITH" && firstToken != "EXPLAIN" {
+		if firstToken != "SELECT" && firstToken != "WITH" {
 			return false, fmt.Sprintf("Query blocked: Read-Only mode only permits SELECT statements (found '%s')", firstToken)
 		}
 
@@ -65,6 +73,8 @@ func ValidateQuery(query string, policy models.SecurityPolicy) (bool, string) {
 			"INSERT", "UPDATE", "DELETE", "DROP", "ALTER",
 			"TRUNCATE", "CREATE", "GRANT", "REVOKE", "MERGE",
 			"RENAME", "EXEC", "EXECUTE", "INTO",
+			"BEGIN", "DECLARE", "FUNCTION", "PROCEDURE", "PRAGMA", "CALL",
+			"COMMIT", "ROLLBACK", "SAVEPOINT", "LOCK", "NEXTVAL",
 		}
 
 		for _, token := range tokens {
@@ -110,8 +120,14 @@ func ValidatePLSQL(block string, policy models.SecurityPolicy) (bool, string) {
 	}
 
 	// For PL/SQL, inspect both sanitized tokens and full text to prevent dynamic SQL injection (e.g. EXECUTE IMMEDIATE 'DROP...')
-	sanitized := SanitizeSQL(trimmed)
+	sanitized, err := scanSQL(trimmed)
+	if err != nil {
+		return false, err.Error()
+	}
 	tokens := ExtractTokens(sanitized)
+	if len(tokens) == 0 || (tokens[0] != "BEGIN" && tokens[0] != "DECLARE") {
+		return false, "PL/SQL must be an anonymous BEGIN or DECLARE block"
+	}
 
 	if len(policy.BlockedKeywords) > 0 {
 		for _, kw := range policy.BlockedKeywords {

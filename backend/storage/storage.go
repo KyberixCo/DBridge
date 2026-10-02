@@ -195,8 +195,13 @@ func (cm *ConfigManager) DeleteConnection(id string) error {
 func (cm *ConfigManager) SetActiveConnection(id string) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
+	previous := cm.config.ActiveConnectionID
 	cm.config.ActiveConnectionID = id
-	return cm.save()
+	if err := cm.save(); err != nil {
+		cm.config.ActiveConnectionID = previous
+		return err
+	}
+	return nil
 }
 
 // GetActiveConnection returns the currently selected connection profile with its decrypted password from OS Keychain.

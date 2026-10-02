@@ -1,15 +1,12 @@
 package mcp
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,7 +14,6 @@ import (
 
 	"oramcp/backend/audit"
 	"oramcp/backend/models"
-	"oramcp/backend/oracle"
 	"oramcp/backend/security"
 	"oramcp/backend/storage"
 )
@@ -25,7 +21,7 @@ import (
 // JSONRPCRequest represents an incoming JSON-RPC 2.0 message.
 type JSONRPCRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
-	ID      interface{}     `json:"id"`
+	ID      json.RawMessage `json:"id"`
 	Method  string          `json:"method"`
 	Params  json.RawMessage `json:"params,omitempty"`
 }
@@ -33,7 +29,7 @@ type JSONRPCRequest struct {
 // JSONRPCResponse represents an outgoing JSON-RPC 2.0 message.
 type JSONRPCResponse struct {
 	JSONRPC string      `json:"jsonrpc"`
-	ID      interface{} `json:"id,omitempty"`
+	ID      interface{} `json:"id"`
 	Result  interface{} `json:"result,omitempty"`
 	Error   *RPCError   `json:"error,omitempty"`
 }
@@ -61,13 +57,16 @@ type ToolDefinition struct {
 
 // ToolAnnotations describe a tool's behavior to MCP clients. They do not enforce policy.
 type ToolAnnotations struct {
-	ReadOnlyHint bool `json:"readOnlyHint"`
+	ReadOnlyHint    bool `json:"readOnlyHint"`
+	DestructiveHint bool `json:"destructiveHint"`
+	IdempotentHint  bool `json:"idempotentHint"`
+	OpenWorldHint   bool `json:"openWorldHint"`
 }
 
 // MCPServer coordinates HTTP/SSE and Stdio MCP transports.
 type MCPServer struct {
 	configMgr *storage.ConfigManager
-	oracleMgr *oracle.ClientManager
+	oracleMgr oracleClient
 	auditMgr  *audit.AuditManager
 
 	mu          sync.RWMutex
@@ -79,15 +78,28 @@ type MCPServer struct {
 
 	totalRequests   int64
 	blockedRequests int64
+
+	// These options are fixed before starting a transport.
+	requestTimeout    time.Duration
+	inspectionProfile *models.ConnectionProfile
+}
+
+type oracleClient interface {
+	GetSchemaObjects(context.Context, models.ConnectionProfile) (*models.SchemaInfo, error)
+	GetTableSchema(context.Context, models.ConnectionProfile, string) ([]models.ColumnInfo, error)
+	ExecuteQuery(context.Context, models.ConnectionProfile, string, int) (*models.QueryResult, error)
+	ExecuteReadOnlyQuery(context.Context, models.ConnectionProfile, string, int) (*models.QueryResult, error)
+	ExecutePLSQL(context.Context, models.ConnectionProfile, string) (*models.PLSQLResult, error)
 }
 
 // NewMCPServer instantiates an MCP server.
-func NewMCPServer(cfg *storage.ConfigManager, ora *oracle.ClientManager, aud *audit.AuditManager) *MCPServer {
+func NewMCPServer(cfg *storage.ConfigManager, ora oracleClient, aud *audit.AuditManager) *MCPServer {
 	return &MCPServer{
-		configMgr:   cfg,
-		oracleMgr:   ora,
-		auditMgr:    aud,
-		sseSessions: make(map[string]chan string),
+		configMgr:      cfg,
+		oracleMgr:      ora,
+		auditMgr:       aud,
+		sseSessions:    make(map[string]chan string),
+		requestTimeout: 30 * time.Second,
 	}
 }
 
@@ -298,44 +310,23 @@ func (s *MCPServer) handleDirectMCP(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(respBytes)
 }
 
-// RunStdio reads from stdin and writes to stdout for CLI MCP mode.
-func (s *MCPServer) RunStdio(ctx context.Context) error {
-	fmt.Fprintln(os.Stderr, "dbridge: MCP stdio server listening...")
-	scanner := bufio.NewScanner(os.Stdin)
-	buf := make([]byte, 64*1024)
-	scanner.Buffer(buf, 10*1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		trimmed := strings.TrimSpace(string(line))
-		if len(trimmed) == 0 {
-			continue
-		}
-		resp := s.ProcessJSONRPC(ctx, []byte(trimmed), "stdio")
-		if len(resp) > 0 {
-			fmt.Printf("%s\n", string(resp))
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "dbridge: stdio error: %v\n", err)
-		return err
-	}
-	return nil
-}
-
 // ProcessJSONRPC processes an incoming JSON-RPC payload and returns the response.
 func (s *MCPServer) ProcessJSONRPC(ctx context.Context, data []byte, clientInfo string) []byte {
-	var req JSONRPCRequest
-	if err := json.Unmarshal(data, &req); err != nil {
-		resp := JSONRPCResponse{
-			JSONRPC: "2.0",
-			Error: &RPCError{
-				Code:    -32700,
-				Message: "Parse error: " + err.Error(),
-			},
-		}
-		out, _ := json.Marshal(resp)
-		return out
+	req, rpcErr := decodeRequest(data)
+	if rpcErr != nil {
+		return s.makeResponse(nil, nil, rpcErr)
+	}
+	// Notifications never execute tools or receive responses.
+	if len(req.ID) == 0 {
+		return nil
+	}
+	if len(req.Params) > 0 && strings.TrimSpace(string(req.Params))[0] != '{' {
+		return s.makeResponse(req.ID, nil, &RPCError{Code: -32602, Message: "Params must be an object"})
+	}
+	ctx, cancel := context.WithTimeout(ctx, s.operationTimeout())
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return s.makeResponse(req.ID, nil, &RPCError{Code: -32000, Message: err.Error()})
 	}
 
 	atomic.AddInt64(&s.totalRequests, 1)
@@ -345,7 +336,11 @@ func (s *MCPServer) ProcessJSONRPC(ctx context.Context, data []byte, clientInfo 
 		var params struct {
 			ProtocolVersion string `json:"protocolVersion"`
 		}
-		_ = json.Unmarshal(req.Params, &params)
+		if len(req.Params) > 0 {
+			if err := json.Unmarshal(req.Params, &params); err != nil {
+				return s.makeResponse(req.ID, nil, &RPCError{Code: -32602, Message: "Invalid initialize params"})
+			}
+		}
 		protocolVersion := "2025-03-26"
 		if params.ProtocolVersion == "2024-11-05" {
 			protocolVersion = params.ProtocolVersion
@@ -367,7 +362,7 @@ func (s *MCPServer) ProcessJSONRPC(ctx context.Context, data []byte, clientInfo 
 				"name":    "dbridge-server",
 				"version": "1.0.0",
 			},
-			"instructions": "Use the dbridge MCP tools and resources for Oracle schema inspection and database operations. Prefer oracle_list_tables and oracle_describe_table before writing SQL. The configured security policy governs oracle_query and oracle_execute_plsql; inspect the requested operation before calling them. Do not use Python or shell scripts to access Oracle through dbridge.",
+			"instructions": s.serverInstructions(),
 		}
 		return s.makeResponse(req.ID, res, nil)
 
@@ -386,7 +381,13 @@ func (s *MCPServer) ProcessJSONRPC(ctx context.Context, data []byte, clientInfo 
 		if err := json.Unmarshal(req.Params, &params); err != nil {
 			return s.makeResponse(req.ID, nil, &RPCError{Code: -32602, Message: "Invalid params"})
 		}
+		if err := s.validateToolArguments(params.Name, params.Arguments); err != nil {
+			return s.makeResponse(req.ID, nil, &RPCError{Code: -32602, Message: err.Error()})
+		}
 		result, isErr := s.callTool(ctx, params.Name, params.Arguments, clientInfo)
+		if err := ctx.Err(); err != nil {
+			result, isErr = err.Error(), true
+		}
 		respData := map[string]interface{}{
 			"content": []map[string]interface{}{
 				{
@@ -399,7 +400,10 @@ func (s *MCPServer) ProcessJSONRPC(ctx context.Context, data []byte, clientInfo 
 		return s.makeResponse(req.ID, respData, nil)
 
 	case "resources/list":
-		resources := s.getResourcesList(ctx)
+		resources, err := s.getResourcesList(ctx)
+		if err != nil {
+			return s.makeResponse(req.ID, nil, &RPCError{Code: -32000, Message: err.Error()})
+		}
 		return s.makeResponse(req.ID, map[string]interface{}{"resources": resources}, nil)
 
 	case "resources/read":
@@ -409,11 +413,15 @@ func (s *MCPServer) ProcessJSONRPC(ctx context.Context, data []byte, clientInfo 
 		if err := json.Unmarshal(req.Params, &params); err != nil || params.URI == "" {
 			return s.makeResponse(req.ID, nil, &RPCError{Code: -32602, Message: "Invalid resource URI"})
 		}
-		activeProfile := s.configMgr.GetActiveConnection()
+		activeProfile := s.activeConnection()
 		if activeProfile == nil {
 			return s.makeResponse(req.ID, nil, &RPCError{Code: -32602, Message: "Resource is not available"})
 		}
-		tableName, found := findResourceTable(s.getResourcesList(ctx), params.URI)
+		resources, err := s.getResourcesList(ctx)
+		if err != nil {
+			return s.makeResponse(req.ID, nil, &RPCError{Code: -32000, Message: "Could not list resources: " + err.Error()})
+		}
+		tableName, found := findResourceTable(resources, params.URI)
 		if !found {
 			return s.makeResponse(req.ID, nil, &RPCError{Code: -32602, Message: "Resource is not available"})
 		}
@@ -460,11 +468,11 @@ func (s *MCPServer) makeResponse(id interface{}, result interface{}, err *RPCErr
 }
 
 func (s *MCPServer) getToolsList() []ToolDefinition {
-	return []ToolDefinition{
+	tools := []ToolDefinition{
 		{
 			Name:        "oracle_list_tables",
 			Description: "Lists all tables, views, and stored procedures accessible to the current Oracle user.",
-			Annotations: &ToolAnnotations{ReadOnlyHint: true},
+			Annotations: &ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 			InputSchema: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -473,7 +481,7 @@ func (s *MCPServer) getToolsList() []ToolDefinition {
 		{
 			Name:        "oracle_describe_table",
 			Description: "Inspects schema of a table, returning columns, data types, nullability, and primary keys.",
-			Annotations: &ToolAnnotations{ReadOnlyHint: true},
+			Annotations: &ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -487,6 +495,7 @@ func (s *MCPServer) getToolsList() []ToolDefinition {
 		},
 		{
 			Name:        "oracle_query",
+			Annotations: &ToolAnnotations{DestructiveHint: true, OpenWorldHint: true},
 			Description: "Executes a SQL query against Oracle DB. Subject to OraMCP security policy (defaults to SELECT only; blocks modifications like INSERT, UPDATE, DELETE).",
 			InputSchema: map[string]interface{}{
 				"type": "object",
@@ -497,7 +506,9 @@ func (s *MCPServer) getToolsList() []ToolDefinition {
 					},
 					"max_rows": map[string]interface{}{
 						"type":        "integer",
-						"description": "Maximum number of rows to retrieve (default: 100, max: 1000)",
+						"description": "Maximum rows to retrieve (default: up to 100; capped by server policy)",
+						"minimum":     1,
+						"maximum":     s.rowLimit(),
 					},
 				},
 				"required": []string{"query"},
@@ -505,6 +516,7 @@ func (s *MCPServer) getToolsList() []ToolDefinition {
 		},
 		{
 			Name:        "oracle_execute_plsql",
+			Annotations: &ToolAnnotations{DestructiveHint: true, OpenWorldHint: true},
 			Description: "Executes an anonymous PL/SQL block (e.g. 'BEGIN ... END;') and captures DBMS_OUTPUT. Requires 'Allow PL/SQL' to be enabled in OraMCP security settings.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
@@ -520,7 +532,7 @@ func (s *MCPServer) getToolsList() []ToolDefinition {
 		{
 			Name:        "oracle_list_connections",
 			Description: "Returns all saved Oracle database connection profiles and indicates which is currently active.",
-			Annotations: &ToolAnnotations{ReadOnlyHint: true},
+			Annotations: &ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true},
 			InputSchema: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -528,6 +540,7 @@ func (s *MCPServer) getToolsList() []ToolDefinition {
 		},
 		{
 			Name:        "oracle_switch_connection",
+			Annotations: &ToolAnnotations{IdempotentHint: true},
 			Description: "Switches the active Oracle connection used by MCP tools.",
 			InputSchema: map[string]interface{}{
 				"type": "object",
@@ -541,11 +554,28 @@ func (s *MCPServer) getToolsList() []ToolDefinition {
 			},
 		},
 	}
+	filtered := make([]ToolDefinition, 0, len(tools))
+	for _, tool := range tools {
+		if s.inspectionProfile != nil && (tool.Name == "oracle_execute_plsql" || tool.Name == "oracle_switch_connection" || tool.Name == "oracle_list_connections") {
+			continue
+		}
+		schema := tool.InputSchema.(map[string]interface{})
+		schema["additionalProperties"] = false
+		if tool.Name == "oracle_query" && s.inspectionProfile != nil {
+			tool.Description = "Executes one SELECT/CTE on the pinned inspection connection in an Oracle read-only transaction. Direct routine calls are restricted; database links and PL/SQL are disabled. Requires a least-privilege Oracle user."
+			// Views can call autonomous routines; do not promise unconditional read-only behavior.
+		}
+		filtered = append(filtered, tool)
+	}
+	return filtered
 }
 
 func (s *MCPServer) callTool(ctx context.Context, name string, args map[string]interface{}, clientInfo string) (string, bool) {
-	activeProfile := s.configMgr.GetActiveConnection()
-	policy := s.configMgr.GetSecurityPolicy()
+	if err := s.validateToolArguments(name, args); err != nil {
+		return err.Error(), true
+	}
+	activeProfile := s.activeConnection()
+	policy := s.securityPolicy()
 
 	switch name {
 	case "oracle_list_connections":
@@ -586,7 +616,9 @@ func (s *MCPServer) callTool(ctx context.Context, name string, args map[string]i
 		if found == nil {
 			return fmt.Sprintf("Connection profile '%s' not found", target), true
 		}
-		_ = s.configMgr.SetActiveConnection(found.ID)
+		if err := s.configMgr.SetActiveConnection(found.ID); err != nil {
+			return fmt.Sprintf("Could not persist active connection: %v", err), true
+		}
 		return fmt.Sprintf("Switched active Oracle connection to '%s' (%s@%s)", found.Name, found.Username, found.Host), false
 
 	case "oracle_list_tables":
@@ -624,23 +656,16 @@ func (s *MCPServer) callTool(ctx context.Context, name string, args map[string]i
 			return "Missing 'query' argument", true
 		}
 
-		maxRows := 100
-		if mr, ok := args["max_rows"]; ok {
-			switch v := mr.(type) {
-			case float64:
-				maxRows = int(v)
-			case string:
-				if parsed, err := strconv.Atoi(v); err == nil {
-					maxRows = parsed
-				}
-			}
-		}
-		if policy.MaxRows > 0 && maxRows > policy.MaxRows {
-			maxRows = policy.MaxRows
+		maxRows := min(100, s.rowLimit())
+		if mr, ok := args["max_rows"].(float64); ok {
+			maxRows = int(min(mr, float64(s.rowLimit())))
 		}
 
 		// Security Validation
 		allowed, reason := security.ValidateQuery(query, policy)
+		if allowed && s.inspectionProfile != nil {
+			allowed, reason = security.ValidateInspectionQuery(query)
+		}
 		entry := models.AuditLogEntry{
 			ID:         fmt.Sprintf("log-%d", time.Now().UnixNano()),
 			Timestamp:  time.Now(),
@@ -664,7 +689,13 @@ func (s *MCPServer) callTool(ctx context.Context, name string, args map[string]i
 		}
 
 		start := time.Now()
-		result, err := s.oracleMgr.ExecuteQuery(ctx, *activeProfile, query, maxRows)
+		var result *models.QueryResult
+		var err error
+		if s.inspectionProfile != nil || policy.Mode == "read_only" || policy.Mode == "" {
+			result, err = s.oracleMgr.ExecuteReadOnlyQuery(ctx, *activeProfile, query, maxRows)
+		} else {
+			result, err = s.oracleMgr.ExecuteQuery(ctx, *activeProfile, query, maxRows)
+		}
 		entry.ExecutionMs = time.Since(start).Milliseconds()
 
 		if err != nil {
@@ -714,7 +745,7 @@ func (s *MCPServer) callTool(ctx context.Context, name string, args map[string]i
 		if err != nil {
 			entry.Error = err.Error()
 			s.auditMgr.Record(entry)
-			return fmt.Sprintf("PL/SQL Execution Error: %v\nOutput:\n%s", err, strings.Join(result.Output, "\n")), true
+			return plsqlErrorText(result, err), true
 		}
 
 		s.auditMgr.Record(entry)
@@ -726,15 +757,15 @@ func (s *MCPServer) callTool(ctx context.Context, name string, args map[string]i
 	}
 }
 
-func (s *MCPServer) getResourcesList(ctx context.Context) []map[string]interface{} {
-	activeProfile := s.configMgr.GetActiveConnection()
+func (s *MCPServer) getResourcesList(ctx context.Context) ([]map[string]interface{}, error) {
+	activeProfile := s.activeConnection()
 	if activeProfile == nil {
-		return []map[string]interface{}{}
+		return []map[string]interface{}{}, nil
 	}
 
 	info, err := s.oracleMgr.GetSchemaObjects(ctx, *activeProfile)
 	if err != nil {
-		return []map[string]interface{}{}
+		return nil, err
 	}
 
 	resources := make([]map[string]interface{}, 0, len(info.Tables))
@@ -746,7 +777,7 @@ func (s *MCPServer) getResourcesList(ctx context.Context) []map[string]interface
 			"mimeType":    "application/json",
 		})
 	}
-	return resources
+	return resources, nil
 }
 
 // findResourceTable accepts only a URI currently advertised by resources/list.

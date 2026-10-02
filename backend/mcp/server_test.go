@@ -13,6 +13,7 @@ import (
 )
 
 func TestMCPServer_ProcessJSONRPC(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	cfg, err := storage.NewConfigManager()
 	if err != nil {
 		t.Fatalf("Failed to init config manager: %v", err)
@@ -141,7 +142,7 @@ func TestToolReadOnlyAnnotations(t *testing.T) {
 			if !present || annotation.(map[string]interface{})["readOnlyHint"] != true {
 				t.Errorf("%s must declare readOnlyHint", tool.Name)
 			}
-		} else if present {
+		} else if present && annotation.(map[string]interface{})["readOnlyHint"] == true {
 			t.Errorf("%s must not claim to be read-only", tool.Name)
 		}
 	}

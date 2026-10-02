@@ -211,8 +211,11 @@ func AutoConfigureClaude(port int) (string, error) {
 
 // AutoConfigureVSCodeWorkspace creates or updates VS Code mcp.json.
 // If targetDir is "", it updates the user's global configuration (%APPDATA%\Code\User\mcp.json on Windows).
-// transport can be "command" (stdio mode) or "sse" (HTTP/SSE mode). Default is "command".
+// transport can be "command", "inspect" (restricted stdio), or "sse". Default is "command".
 func AutoConfigureVSCodeWorkspace(targetDir string, transport string, port int) (string, error) {
+	if transport != "" && transport != "command" && transport != "stdio" && transport != "inspect" && transport != "sse" {
+		return "", fmt.Errorf("unsupported VS Code transport: %s", transport)
+	}
 	mcpPath, err := GetVSCodeConfigPath(targetDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve VS Code configuration path: %w", err)
@@ -243,16 +246,22 @@ func AutoConfigureVSCodeWorkspace(targetDir string, transport string, port int) 
 			}
 		} else {
 			// Command / stdio mode
-			commandName := "dbridge"
-			if runtime.GOOS == "windows" {
-				commandName = "dbridge.exe"
+			commandName, err := os.Executable()
+			if err != nil {
+				return fmt.Errorf("could not locate dbridge executable: %w", err)
 			}
-			if execPath, err := os.Executable(); err == nil && execPath != "" {
-				commandName = execPath
+			commandName, err = filepath.Abs(commandName)
+			if err != nil {
+				return fmt.Errorf("could not resolve executable path: %w", err)
+			}
+			args := []string{"--mcp"}
+			if transport == "inspect" {
+				args = append(args, "--inspect")
 			}
 			targetMap["dbridge-oracle"] = map[string]interface{}{
+				"type":    "stdio",
 				"command": commandName,
-				"args":    []string{"--mcp"},
+				"args":    args,
 			}
 		}
 
@@ -265,6 +274,9 @@ func AutoConfigureVSCodeWorkspace(targetDir string, transport string, port int) 
 	}
 
 	modeLabel := "Command / Stdio"
+	if transport == "inspect" {
+		modeLabel = "Command / Stdio / Inspection (connection pinned at startup)"
+	}
 	if transport == "sse" {
 		modeLabel = "SSE / Network URL"
 	}

@@ -124,4 +124,30 @@ func TestAutoConfigureVSCodeWorkspace_PreservesExisting(t *testing.T) {
 	if dbridgeCmd["command"] == "" {
 		t.Errorf("expected command to be populated in command mode: %+v", dbridgeCmd)
 	}
+	if dbridgeCmd["type"] != "stdio" {
+		t.Errorf("expected explicit stdio type, got %v", dbridgeCmd["type"])
+	}
+	if !filepath.IsAbs(dbridgeCmd["command"].(string)) {
+		t.Errorf("expected absolute executable path")
+	}
+	args := dbridgeCmd["args"].([]interface{})
+	if len(args) != 1 || args[0] != "--mcp" {
+		t.Errorf("expected direct --mcp invocation, got %v", args)
+	}
+	if _, err := AutoConfigureVSCodeWorkspace(tempDir, "inspect", 9090); err != nil {
+		t.Fatal(err)
+	}
+	dataInspection, _ := os.ReadFile(mcpPath)
+	var inspection map[string]interface{}
+	if err := json.Unmarshal(dataInspection, &inspection); err != nil {
+		t.Fatal(err)
+	}
+	entry := inspection["servers"].(map[string]interface{})["dbridge-oracle"].(map[string]interface{})
+	inspectionArgs := entry["args"].([]interface{})
+	if len(inspectionArgs) != 2 || inspectionArgs[0] != "--mcp" || inspectionArgs[1] != "--inspect" {
+		t.Fatalf("inspection launch: %v", entry)
+	}
+	if _, err := AutoConfigureVSCodeWorkspace(tempDir, "invalid", 9090); err == nil {
+		t.Fatal("invalid transport accepted")
+	}
 }

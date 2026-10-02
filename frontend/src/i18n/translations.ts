@@ -218,6 +218,7 @@ export interface Translations {
     installClaudeBtn: string;
     installVSCodeBtn: string;
     installVSCodeCommandBtn: string;
+    inspectionMode: string;
     installVSCodeSseBtn: string;
     vscodeModeCommand: string;
     vscodeModeSse: string;
@@ -469,6 +470,7 @@ export const translations: Record<Language, Translations> = {
       installClaudeBtn: 'CONFIGURE CLAUDE DESKTOP',
       installVSCodeBtn: 'CONFIGURE VS CODE',
       installVSCodeCommandBtn: 'CONFIGURE VS CODE (COMMAND / STDIO)',
+      inspectionMode: 'Inspection: pin the active connection at startup; disable PL/SQL and switching.',
       installVSCodeSseBtn: 'CONFIGURE VS CODE (SSE / URL)',
       vscodeModeCommand: 'CLI COMMAND MODE (STDIO - RECOMMENDED FOR COPILOT / IN PATH)',
       vscodeModeSse: 'NETWORK SSE MODE (REQUIRES RUNNING DBRIDGE APP)',
@@ -718,6 +720,7 @@ export const translations: Record<Language, Translations> = {
       installClaudeBtn: 'CONFIGURAR CLAUDE DESKTOP',
       installVSCodeBtn: 'CONFIGURAR VS CODE',
       installVSCodeCommandBtn: 'CONFIGURAR VS CODE (MODO COMANDO / STDIO)',
+      inspectionMode: 'Inspección: fijar la conexión activa al iniciar; deshabilitar PL/SQL y cambios de conexión.',
       installVSCodeSseBtn: 'CONFIGURAR VS CODE (MODO RED / SSE)',
       vscodeModeCommand: 'MODO COMANDO CLI (STDIO - RECOMENDADO PARA COPILOT / EN PATH)',
       vscodeModeSse: 'MODO RED SSE (REQUIERE LA APP DBRIDGE ABIERTA)',

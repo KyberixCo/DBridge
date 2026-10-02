@@ -100,9 +100,39 @@ dbridge expone las siguientes herramientas del Model Context Protocol a los mode
 | `oracle_list_connections` | Lista los perfiles de conexión configurados e indica el activo. | *ninguno* |
 | `oracle_switch_connection` | Cambia la base de datos activa utilizada por el servidor MCP. | `connection_id` (cadena, obligatoria) |
 
-El servidor marca `oracle_list_tables`, `oracle_describe_table` y `oracle_list_connections` como herramientas de solo lectura para que los clientes MCP puedan tratarlas como consultas. `oracle_query`, `oracle_execute_plsql` y `oracle_switch_connection` no llevan esa marca: su efecto depende de la operación y de la política configurada. Estas anotaciones informan al cliente; la política de dbridge sigue determinando qué se permite.
+El servidor marca `oracle_list_tables`, `oracle_describe_table` y `oracle_list_connections` como herramientas de solo lectura e idempotentes. SQL y PL/SQL se anuncian conservadoramente como operaciones que pueden tener efectos destructivos y acceder a sistemas externos. El cambio de conexión se anuncia como una modificación idempotente del estado local. Estas anotaciones informan al cliente; no conceden permisos ni eliminan sus confirmaciones.
 
 Los recursos MCP anunciados para las tablas del esquema activo se pueden abrir con `resources/read`. Devuelven nombres de columnas, tipos, nulabilidad y claves primarias en JSON, sin filas de datos. El servidor también indica al agente que utilice las herramientas MCP para Oracle. Las advertencias de VS Code por scripts Python o comandos de terminal pertenecen al agente y a la configuración de aprobaciones de VS Code; dbridge no puede suprimirlas.
+
+### STDIO directo e inspección en Copilot
+
+El mismo binario abre la interfaz sin argumentos y ejecuta MCP con `--mcp` o `stdio`. No requiere Python ni un shell intermediario. La instalación de VS Code genera `type: "stdio"` y la ruta absoluta del ejecutable. La opción **Inspección** de la interfaz añade `--inspect`.
+
+Ejemplo de `.vscode/mcp.json` (sustituir la ruta y el ID por valores reales):
+
+```json
+{
+  "servers": {
+    "dbridge-oracle": {
+      "type": "stdio",
+      "command": "/ruta/absoluta/dbridge",
+      "args": ["--mcp", "--inspect", "--connection", "ID_DEL_PERFIL", "--timeout", "30s"]
+    }
+  }
+}
+```
+
+En Windows, usar la ruta absoluta a `dbridge.exe`. `--connection` acepta un ID de perfil existente y requiere `--inspect`. Si se omite, inspección fija el perfil activo al iniciar el proceso; para elegir otro hay que reiniciar el servidor. No modifica la conexión guardada. La lista de herramientas queda limitada a `oracle_list_tables`, `oracle_describe_table` y `oracle_query`; las llamadas directas a las herramientas ocultas también se rechazan.
+
+Inspección fuerza la política de lectura, deshabilita PL/SQL y rechaza enlaces de base de datos y llamadas directas a rutinas fuera de una lista conservadora de funciones SQL integradas. Por ejemplo, admite `COUNT`, `NVL` y `UPPER`, pero bloquea `UTL_HTTP.REQUEST`, funciones propias y funciones calificadas por esquema. Algunas expresiones válidas, como CTE con una lista explícita de columnas, requieren simplificar el SQL en este modo.
+
+Las consultas MCP bajo inspección o política `read_only` usan `SET TRANSACTION READ ONLY` en una transacción que siempre se revierte. Si Oracle no permite establecer ese modo, la consulta no se ejecuta. Utilizar además un usuario Oracle con `CREATE SESSION` y únicamente las concesiones de lectura necesarias, sin permisos DML/DDL ni ejecución de rutinas de escritura o red. Revisar vistas y sinónimos: una rutina autónoma invocada indirectamente puede superar las restricciones de la transacción. Por esa razón `oracle_query` conserva `readOnlyHint: false`, incluso en inspección.
+
+Los argumentos se validan también en el servidor. `max_rows` debe ser un entero positivo que no exceda la política; el valor por defecto es el menor entre 100 y el límite. Una política sin límite positivo utiliza 500. Se rechazan scripts SQL con varias sentencias, literales/comentarios incompletos, secuencias `NEXTVAL`, bloqueos `FOR UPDATE` y funciones PL/SQL en CTE bajo política de lectura. Los modos `custom` y `full` conservan sus permisos para una sola sentencia SQL.
+
+Cada operación MCP tiene un plazo predeterminado de 30 segundos; `--timeout` permite valores positivos hasta `10m`. STDIO acepta `notifications/cancelled`, sigue leyendo durante una consulta y omite la respuesta de una solicitud cancelada explícitamente. La cancelación se propaga al driver; no revierte cambios ya confirmados por operaciones permitidas en otros modos. La cola admite hasta 32 solicitudes pendientes y cada mensaje de entrada tiene un máximo de 10 MiB. Los diagnósticos van a stderr, stdout contiene exclusivamente JSON-RPC y los errores de lectura/escritura terminan el transporte.
+
+Después de actualizar el ejecutable, reiniciar el servidor desde **MCP: List Servers** y ejecutar **MCP: Reset Cached Tools**. Comprobar que Copilot usa las herramientas MCP, no la terminal para lanzar Python. Las decisiones de confianza y aprobación siguen perteneciendo a VS Code. Opcionalmente, macOS y Linux permiten `sandboxEnabled`; configurar el acceso a `.oramcp`, wallets, credenciales del sistema y los hosts Oracle, y validar la conexión antes de activarlo. Ver la [configuración MCP oficial de VS Code](https://code.visualstudio.com/docs/agents/reference/mcp-configuration).
 
 ---
 

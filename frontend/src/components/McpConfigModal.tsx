@@ -44,6 +44,7 @@ export const McpConfigModal: React.FC<McpConfigModalProps> = ({
   const [port, setPort] = useState<number>(status?.port || 8085);
   const [isRestarting, setIsRestarting] = useState(false);
   const [autoMessage, setAutoMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const [inspectionMode, setInspectionMode] = useState(false);
 
   if (!isOpen) return null;
 
@@ -85,7 +86,7 @@ export const McpConfigModal: React.FC<McpConfigModalProps> = ({
   const handleAutoVSCode = async (transport: 'command' | 'sse' = 'command') => {
     setAutoMessage(null);
     try {
-      const res = await AutoConfigureVSCode('', transport);
+      const res = await AutoConfigureVSCode('', transport === 'command' && inspectionMode ? 'inspect' : transport);
       setAutoMessage({ text: res, isError: false });
     } catch (err: any) {
       setAutoMessage({ text: err?.message || String(err), isError: true });
@@ -105,8 +106,9 @@ export const McpConfigModal: React.FC<McpConfigModalProps> = ({
   const vsCodeCommandConfig = {
     servers: {
       "dbridge-oracle": {
+        type: "stdio",
         command: "dbridge",
-        args: ["--mcp"]
+        args: inspectionMode ? ["--mcp", "--inspect"] : ["--mcp"]
       }
     }
   };
@@ -232,6 +234,10 @@ export const McpConfigModal: React.FC<McpConfigModalProps> = ({
                   <div className="text-[10px] text-[#a7a49c] mt-1">%APPDATA%\Code\User\mcp.json</div>
                 </div>
                 <div className="mt-3 space-y-1.5">
+                  <label className="flex items-start gap-2 text-[10px] text-[#a7a49c] cursor-pointer">
+                    <input type="checkbox" checked={inspectionMode} onChange={event => setInspectionMode(event.target.checked)} />
+                    <span>{t.mcpModal.inspectionMode}</span>
+                  </label>
                   <TacticalButton
                     size="sm"
                     variant="acid"

@@ -100,6 +100,38 @@ dbridge exposes the following Model Context Protocol tools to connected AI model
 | `oracle_list_connections` | Lists configured database connection profiles and indicates active target. | *none* |
 | `oracle_switch_connection` | Hot-switches the active database target used by MCP calls. | `connection_id` (string, required) |
 
+### Direct STDIO and Copilot inspection mode
+
+The same binary opens the GUI without arguments and runs MCP with `--mcp` or `stdio`. No Python or shell wrapper is required. VS Code auto-configuration writes `type: "stdio"` and the absolute executable path. The **Inspection** checkbox adds `--inspect`.
+
+Example `.vscode/mcp.json` (replace the path and profile ID):
+
+```json
+{
+  "servers": {
+    "dbridge-oracle": {
+      "type": "stdio",
+      "command": "/absolute/path/dbridge",
+      "args": ["--mcp", "--inspect", "--connection", "PROFILE_ID", "--timeout", "30s"]
+    }
+  }
+}
+```
+
+On Windows, use the absolute path to `dbridge.exe`. `--connection` accepts an existing profile ID and requires `--inspect`. Without it, inspection pins the active profile at process startup; restart to choose another. It does not change the saved active connection. Only `oracle_list_tables`, `oracle_describe_table` and `oracle_query` are exposed; direct calls to hidden tools are also rejected.
+
+Inspection overrides write permissions, disables PL/SQL, and rejects database links and direct routine calls outside a conservative list of built-in SQL functions. `COUNT`, `NVL` and `UPPER` are supported; custom functions, schema-qualified routines and `UTL_HTTP.REQUEST` are blocked. Some valid SQL expressions, such as CTEs with explicit column lists, must be simplified in this mode.
+
+MCP queries in inspection or `read_only` policy run in a transaction with `SET TRANSACTION READ ONLY` and always roll back. Queries fail closed if Oracle cannot establish this mode. Also use an Oracle user with `CREATE SESSION` and only the required read grants, without DML/DDL permissions or execution grants on write/network routines. Review views and synonyms: indirectly invoked autonomous routines can bypass transaction restrictions. Consequently, `oracle_query` retains `readOnlyHint: false`, even in inspection mode.
+
+Schema and connection inspection tools advertise read-only, idempotent behavior. SQL and PL/SQL conservatively advertise potential destructive effects and external access; switching advertises an idempotent local state change. Annotations describe behavior; they neither grant permissions nor bypass client approvals. Table resources return schema metadata only, never data rows. Server instructions direct the agent to MCP tools and identify database results as data rather than instructions.
+
+Tool arguments are validated on the server. `max_rows` must be a positive integer within the policy limit; its default is the smaller of 100 and that limit. A policy without a positive limit falls back to 500. Multiple SQL statements and incomplete literals/comments are rejected. Read-only validation also blocks `NEXTVAL`, `FOR UPDATE`, and PL/SQL functions in CTEs. `custom` and `full` policies retain their configured permissions for single SQL statements.
+
+MCP operations default to a 30-second deadline; `--timeout` accepts positive durations up to `10m`. STDIO supports `notifications/cancelled`, continues reading during operations, and suppresses responses to explicitly cancelled requests. Cancellation propagates to the driver and cannot undo already committed operations in other modes. The pending queue is capped at 32 requests; input frames are capped at 10 MiB. Diagnostics go to stderr, stdout contains only JSON-RPC, and transport read/write failures are surfaced.
+
+After replacing the executable, restart it through **MCP: List Servers** and run **MCP: Reset Cached Tools**. Check that Copilot calls MCP tools instead of running Python in the terminal. VS Code controls trust and tool approvals. Optional `sandboxEnabled` support on macOS/Linux needs access rules compatible with `.oramcp`, wallets, the system credential store and Oracle hosts; validate those dependencies before enabling it. See the [official VS Code MCP configuration reference](https://code.visualstudio.com/docs/agents/reference/mcp-configuration).
+
 ---
 
 ## AI Client Setup

@@ -52,14 +52,22 @@ func BuildConnectionString(p models.ConnectionProfile) string {
 
 // GetDB returns or initializes a cached *sql.DB pool for the profile.
 func (cm *ClientManager) GetDB(p models.ConnectionProfile) (*sql.DB, error) {
+	return cm.GetDBContext(context.Background(), p)
+}
+
+// GetDBContext includes connection establishment in the caller's deadline.
+func (cm *ClientManager) GetDBContext(ctx context.Context, p models.ConnectionProfile) (*sql.DB, error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	if db, exists := cm.pools[p.ID]; exists {
 		// Ping to ensure still valid
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		if err := db.PingContext(ctx); err == nil {
+		if err := db.PingContext(pingCtx); err == nil {
 			return db, nil
 		}
 		// If ping failed, close and recreate
@@ -77,9 +85,9 @@ func (cm *ClientManager) GetDB(p models.ConnectionProfile) (*sql.DB, error) {
 	db.SetMaxIdleConns(3)
 	db.SetConnMaxLifetime(30 * time.Minute)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if err := db.PingContext(ctx); err != nil {
+	if err := db.PingContext(pingCtx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("failed to ping oracle database: %w", err)
 	}
@@ -143,6 +151,16 @@ func (cm *ClientManager) TestConnection(p models.ConnectionProfile) models.Conne
 
 // ExecuteQuery executes a SELECT query and returns rows formatted as maps.
 func (cm *ClientManager) ExecuteQuery(ctx context.Context, p models.ConnectionProfile, query string, maxRows int) (*models.QueryResult, error) {
+	return cm.executeQuery(ctx, p, query, maxRows, false)
+}
+
+// ExecuteReadOnlyQuery uses an Oracle read-only transaction on a dedicated connection.
+// Privileged autonomous routines can bypass transaction restrictions: use a least-privilege user.
+func (cm *ClientManager) ExecuteReadOnlyQuery(ctx context.Context, p models.ConnectionProfile, query string, maxRows int) (*models.QueryResult, error) {
+	return cm.executeQuery(ctx, p, query, maxRows, true)
+}
+
+func (cm *ClientManager) executeQuery(ctx context.Context, p models.ConnectionProfile, query string, maxRows int, readOnly bool) (*models.QueryResult, error) {
 	if maxRows <= 0 {
 		maxRows = 500
 	}
@@ -154,13 +172,28 @@ func (cm *ClientManager) ExecuteQuery(ctx context.Context, p models.ConnectionPr
 		query = strings.TrimSpace(query)
 	}
 
-	db, err := cm.GetDB(p)
+	db, err := cm.GetDBContext(ctx, p)
 	if err != nil {
 		return nil, err
 	}
 
 	start := time.Now()
-	rows, err := db.QueryContext(ctx, query)
+	var rows *sql.Rows
+	if readOnly {
+		// go-ora does not support sql.TxOptions.ReadOnly. Set the mode explicitly
+		// as the first statement in a transaction, and always roll it back.
+		tx, beginErr := db.BeginTx(ctx, nil)
+		if beginErr != nil {
+			return nil, beginErr
+		}
+		defer tx.Rollback()
+		if _, err = tx.ExecContext(ctx, "SET TRANSACTION READ ONLY"); err != nil {
+			return nil, fmt.Errorf("could not enforce Oracle read-only transaction: %w", err)
+		}
+		rows, err = tx.QueryContext(ctx, query)
+	} else {
+		rows, err = db.QueryContext(ctx, query)
+	}
 	if err != nil {
 		return &models.QueryResult{
 			ExecutionMs: time.Since(start).Milliseconds(),
@@ -230,7 +263,7 @@ func (cm *ClientManager) ExecuteQuery(ctx context.Context, p models.ConnectionPr
 
 // ExecutePLSQL runs a PL/SQL block and reads DBMS_OUTPUT buffer.
 func (cm *ClientManager) ExecutePLSQL(ctx context.Context, p models.ConnectionProfile, block string) (*models.PLSQLResult, error) {
-	db, err := cm.GetDB(p)
+	db, err := cm.GetDBContext(ctx, p)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +334,7 @@ func (cm *ClientManager) ExecutePLSQL(ctx context.Context, p models.ConnectionPr
 
 // GetSchemaObjects retrieves tables, views, and procedures belonging to the user.
 func (cm *ClientManager) GetSchemaObjects(ctx context.Context, p models.ConnectionProfile) (*models.SchemaInfo, error) {
-	db, err := cm.GetDB(p)
+	db, err := cm.GetDBContext(ctx, p)
 	if err != nil {
 		return nil, err
 	}
@@ -312,48 +345,42 @@ func (cm *ClientManager) GetSchemaObjects(ctx context.Context, p models.Connecti
 		Procedures: make([]string, 0),
 	}
 
-	// Tables
-	tRows, err := db.QueryContext(ctx, "SELECT TABLE_NAME FROM USER_TABLES ORDER BY TABLE_NAME")
-	if err == nil {
-		defer tRows.Close()
-		for tRows.Next() {
-			var name string
-			if err := tRows.Scan(&name); err == nil {
-				info.Tables = append(info.Tables, name)
-			}
-		}
+	info.Tables, err = queryStrings(ctx, db, "SELECT TABLE_NAME FROM USER_TABLES ORDER BY TABLE_NAME")
+	if err != nil {
+		return nil, err
 	}
-
-	// Views
-	vRows, err := db.QueryContext(ctx, "SELECT VIEW_NAME FROM USER_VIEWS ORDER BY VIEW_NAME")
-	if err == nil {
-		defer vRows.Close()
-		for vRows.Next() {
-			var name string
-			if err := vRows.Scan(&name); err == nil {
-				info.Views = append(info.Views, name)
-			}
-		}
+	info.Views, err = queryStrings(ctx, db, "SELECT VIEW_NAME FROM USER_VIEWS ORDER BY VIEW_NAME")
+	if err != nil {
+		return nil, err
 	}
-
-	// Procedures / Functions / Packages
-	pRows, err := db.QueryContext(ctx, "SELECT OBJECT_NAME FROM USER_OBJECTS WHERE OBJECT_TYPE IN ('PROCEDURE', 'FUNCTION', 'PACKAGE') ORDER BY OBJECT_NAME")
-	if err == nil {
-		defer pRows.Close()
-		for pRows.Next() {
-			var name string
-			if err := pRows.Scan(&name); err == nil {
-				info.Procedures = append(info.Procedures, name)
-			}
-		}
+	info.Procedures, err = queryStrings(ctx, db, "SELECT OBJECT_NAME FROM USER_OBJECTS WHERE OBJECT_TYPE IN ('PROCEDURE', 'FUNCTION', 'PACKAGE') ORDER BY OBJECT_NAME")
+	if err != nil {
+		return nil, err
 	}
 
 	return info, nil
 }
 
+func queryStrings(ctx context.Context, db *sql.DB, query string, args ...interface{}) ([]string, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := make([]string, 0)
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	return values, rows.Err()
+}
+
 // GetTableSchema returns column definitions and primary keys for a given table.
 func (cm *ClientManager) GetTableSchema(ctx context.Context, p models.ConnectionProfile, tableName string) ([]models.ColumnInfo, error) {
-	db, err := cm.GetDB(p)
+	db, err := cm.GetDBContext(ctx, p)
 	if err != nil {
 		return nil, err
 	}
@@ -368,15 +395,12 @@ func (cm *ClientManager) GetTableSchema(ctx context.Context, p models.Connection
 		WHERE cons.CONSTRAINT_TYPE = 'P' AND cons.TABLE_NAME = :1
 	`
 	pkMap := make(map[string]bool)
-	pkRows, err := db.QueryContext(ctx, pkQuery, tableName)
-	if err == nil {
-		defer pkRows.Close()
-		for pkRows.Next() {
-			var col string
-			if err := pkRows.Scan(&col); err == nil {
-				pkMap[col] = true
-			}
-		}
+	primaryKeys, err := queryStrings(ctx, db, pkQuery, tableName)
+	if err != nil {
+		return nil, err
+	}
+	for _, col := range primaryKeys {
+		pkMap[col] = true
 	}
 
 	// Get columns
@@ -397,12 +421,12 @@ func (cm *ClientManager) GetTableSchema(ctx context.Context, p models.Connection
 		var col models.ColumnInfo
 		var nullableStr string
 		if err := rows.Scan(&col.Name, &col.DataType, &col.DataLength, &nullableStr); err != nil {
-			continue
+			return nil, err
 		}
 		col.Nullable = (nullableStr == "Y")
 		col.IsPrimaryKey = pkMap[col.Name]
 		columns = append(columns, col)
 	}
 
-	return columns, nil
+	return columns, rows.Err()
 }

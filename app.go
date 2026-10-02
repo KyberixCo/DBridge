@@ -20,11 +20,11 @@ import (
 
 // App struct manages application state and exposes methods to Wails frontend.
 type App struct {
-	ctx        context.Context
-	configMgr  *storage.ConfigManager
-	oracleMgr  *oracle.ClientManager
-	auditMgr   *audit.AuditManager
-	mcpServer  *mcp.MCPServer
+	ctx       context.Context
+	configMgr *storage.ConfigManager
+	oracleMgr *oracle.ClientManager
+	auditMgr  *audit.AuditManager
+	mcpServer *mcp.MCPServer
 }
 
 // NewApp creates a new App application struct.
@@ -63,6 +63,29 @@ func (a *App) startup(ctx context.Context) {
 		fmt.Printf("Error starting MCP HTTP server: %v\n", err)
 	} else {
 		fmt.Printf("MCP HTTP/SSE server started on port %d\n", port)
+	}
+}
+
+// domReady applies the initial window state once the native window is ready.
+func (a *App) domReady(ctx context.Context) {
+	screens, err := runtime.ScreenGetAll(ctx)
+	if err != nil {
+		runtime.LogWarningf(ctx, "Could not detect startup screen: %v", err)
+		return
+	}
+	for _, screen := range screens {
+		if !screen.IsCurrent {
+			continue
+		}
+		// Physical pixels identify 1080p even when OS display scaling is enabled.
+		size := screen.PhysicalSize
+		if size.Width <= 0 || size.Height <= 0 {
+			size = screen.Size
+		}
+		if size.Width == 1920 && size.Height == 1080 {
+			runtime.WindowMaximise(ctx)
+		}
+		return
 	}
 }
 
@@ -343,6 +366,3 @@ func (a *App) SaveSQLFile(filePath string, content string) (map[string]string, e
 		"name": filepath.Base(filePath),
 	}, nil
 }
-
-
-
