@@ -100,6 +100,10 @@ dbridge expone las siguientes herramientas del Model Context Protocol a los mode
 | `oracle_list_connections` | Lista los perfiles de conexión configurados e indica el activo. | *ninguno* |
 | `oracle_switch_connection` | Cambia la base de datos activa utilizada por el servidor MCP. | `connection_id` (cadena, obligatoria) |
 
+El servidor marca `oracle_list_tables`, `oracle_describe_table` y `oracle_list_connections` como herramientas de solo lectura para que los clientes MCP puedan tratarlas como consultas. `oracle_query`, `oracle_execute_plsql` y `oracle_switch_connection` no llevan esa marca: su efecto depende de la operación y de la política configurada. Estas anotaciones informan al cliente; la política de dbridge sigue determinando qué se permite.
+
+Los recursos MCP anunciados para las tablas del esquema activo se pueden abrir con `resources/read`. Devuelven nombres de columnas, tipos, nulabilidad y claves primarias en JSON, sin filas de datos. El servidor también indica al agente que utilice las herramientas MCP para Oracle. Las advertencias de VS Code por scripts Python o comandos de terminal pertenecen al agente y a la configuración de aprobaciones de VS Code; dbridge no puede suprimirlas.
+
 ---
 
 ## Configuración con Asistentes IA

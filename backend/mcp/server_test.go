@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"oramcp/backend/audit"
+	"oramcp/backend/models"
 	"oramcp/backend/oracle"
 	"oramcp/backend/storage"
 )
@@ -116,5 +117,112 @@ func TestMCPServer_ProcessJSONRPC(t *testing.T) {
 	unknownNotif := `{"jsonrpc":"2.0","method":"random/notification"}`
 	if r := server.ProcessJSONRPC(ctx, []byte(unknownNotif), "test"); len(r) > 0 {
 		t.Errorf("Expected unknown notification to produce no response, got: %s", string(r))
+	}
+}
+
+func TestToolReadOnlyAnnotations(t *testing.T) {
+	server := NewMCPServer(nil, nil, nil)
+	wantReadOnly := map[string]bool{
+		"oracle_list_tables":      true,
+		"oracle_describe_table":   true,
+		"oracle_list_connections": true,
+	}
+	for _, tool := range server.getToolsList() {
+		encoded, err := json.Marshal(tool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var decoded map[string]interface{}
+		if err := json.Unmarshal(encoded, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		annotation, present := decoded["annotations"]
+		if wantReadOnly[tool.Name] {
+			if !present || annotation.(map[string]interface{})["readOnlyHint"] != true {
+				t.Errorf("%s must declare readOnlyHint", tool.Name)
+			}
+		} else if present {
+			t.Errorf("%s must not claim to be read-only", tool.Name)
+		}
+	}
+}
+
+func TestResourceURIRequiresAdvertisement(t *testing.T) {
+	resources := []map[string]interface{}{{"uri": "oracle://USER/table/EMP", "name": "EMP"}}
+	if got, ok := findResourceTable(resources, "oracle://USER/table/EMP"); !ok || got != "EMP" {
+		t.Fatalf("advertised URI should resolve to EMP, got %q, %t", got, ok)
+	}
+	for _, uri := range []string{"oracle://USER/table/DEPT", "oracle://OTHER/table/EMP", "oracle://USER/table/EMP/../DEPT"} {
+		if _, ok := findResourceTable(resources, uri); ok {
+			t.Errorf("unadvertised URI %q was accepted", uri)
+		}
+	}
+}
+
+func TestResourceReadRejectsInvalidParams(t *testing.T) {
+	server := NewMCPServer(nil, nil, nil)
+	for _, params := range []string{`{}`, `{"uri":42}`, `{"uri":""}`} {
+		request := `{"jsonrpc":"2.0","id":1,"method":"resources/read","params":` + params + `}`
+		response := server.ProcessJSONRPC(context.Background(), []byte(request), "test")
+		var parsed struct {
+			Error *RPCError `json:"error"`
+		}
+		if err := json.Unmarshal(response, &parsed); err != nil {
+			t.Fatal(err)
+		}
+		if parsed.Error == nil || parsed.Error.Code != -32602 {
+			t.Errorf("params %s: expected -32602, got %s", params, response)
+		}
+	}
+}
+
+func TestInitializeNegotiatesProtocolVersion(t *testing.T) {
+	server := NewMCPServer(nil, nil, nil)
+	for _, test := range []struct {
+		requested string
+		want      string
+	}{
+		{"2024-11-05", "2024-11-05"},
+		{"2025-03-26", "2025-03-26"},
+		{"2099-01-01", "2025-03-26"},
+	} {
+		request := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"` + test.requested + `"}}`
+		response := server.ProcessJSONRPC(context.Background(), []byte(request), "test")
+		var parsed struct {
+			Result struct {
+				ProtocolVersion string `json:"protocolVersion"`
+				Instructions    string `json:"instructions"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(response, &parsed); err != nil {
+			t.Fatal(err)
+		}
+		if parsed.Result.ProtocolVersion != test.want {
+			t.Errorf("requested %s: want %s, got %s", test.requested, test.want, parsed.Result.ProtocolVersion)
+		}
+		if !strings.Contains(parsed.Result.Instructions, "MCP") {
+			t.Errorf("initialize did not include MCP guidance")
+		}
+	}
+}
+
+func TestTableResourceContentsContainsSchemaOnly(t *testing.T) {
+	columns := []models.ColumnInfo{{Name: "ID", DataType: "NUMBER", IsPrimaryKey: true}}
+	contents, err := tableResourceContents("oracle://USER/table/EMP", "EMP", columns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contents) != 1 || contents[0]["uri"] != "oracle://USER/table/EMP" || contents[0]["mimeType"] != "application/json" {
+		t.Fatalf("invalid MCP resource content: %#v", contents)
+	}
+	var metadata struct {
+		Table   string              `json:"table"`
+		Columns []models.ColumnInfo `json:"columns"`
+	}
+	if err := json.Unmarshal([]byte(contents[0]["text"].(string)), &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Table != "EMP" || len(metadata.Columns) != 1 || !metadata.Columns[0].IsPrimaryKey {
+		t.Fatalf("resource did not return expected schema: %#v", metadata)
 	}
 }

@@ -53,9 +53,15 @@ type ToolCallParams struct {
 
 // ToolDefinition defines an MCP tool schema.
 type ToolDefinition struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	InputSchema interface{} `json:"inputSchema"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	InputSchema interface{}      `json:"inputSchema"`
+	Annotations *ToolAnnotations `json:"annotations,omitempty"`
+}
+
+// ToolAnnotations describe a tool's behavior to MCP clients. They do not enforce policy.
+type ToolAnnotations struct {
+	ReadOnlyHint bool `json:"readOnlyHint"`
 }
 
 // MCPServer coordinates HTTP/SSE and Stdio MCP transports.
@@ -336,8 +342,16 @@ func (s *MCPServer) ProcessJSONRPC(ctx context.Context, data []byte, clientInfo 
 
 	switch req.Method {
 	case "initialize":
+		var params struct {
+			ProtocolVersion string `json:"protocolVersion"`
+		}
+		_ = json.Unmarshal(req.Params, &params)
+		protocolVersion := "2025-03-26"
+		if params.ProtocolVersion == "2024-11-05" {
+			protocolVersion = params.ProtocolVersion
+		}
 		res := map[string]interface{}{
-			"protocolVersion": "2024-11-05",
+			"protocolVersion": protocolVersion,
 			"capabilities": map[string]interface{}{
 				"tools": map[string]interface{}{
 					"listChanged": false,
@@ -353,6 +367,7 @@ func (s *MCPServer) ProcessJSONRPC(ctx context.Context, data []byte, clientInfo 
 				"name":    "dbridge-server",
 				"version": "1.0.0",
 			},
+			"instructions": "Use the dbridge MCP tools and resources for Oracle schema inspection and database operations. Prefer oracle_list_tables and oracle_describe_table before writing SQL. The configured security policy governs oracle_query and oracle_execute_plsql; inspect the requested operation before calling them. Do not use Python or shell scripts to access Oracle through dbridge.",
 		}
 		return s.makeResponse(req.ID, res, nil)
 
@@ -386,6 +401,31 @@ func (s *MCPServer) ProcessJSONRPC(ctx context.Context, data []byte, clientInfo 
 	case "resources/list":
 		resources := s.getResourcesList(ctx)
 		return s.makeResponse(req.ID, map[string]interface{}{"resources": resources}, nil)
+
+	case "resources/read":
+		var params struct {
+			URI string `json:"uri"`
+		}
+		if err := json.Unmarshal(req.Params, &params); err != nil || params.URI == "" {
+			return s.makeResponse(req.ID, nil, &RPCError{Code: -32602, Message: "Invalid resource URI"})
+		}
+		activeProfile := s.configMgr.GetActiveConnection()
+		if activeProfile == nil {
+			return s.makeResponse(req.ID, nil, &RPCError{Code: -32602, Message: "Resource is not available"})
+		}
+		tableName, found := findResourceTable(s.getResourcesList(ctx), params.URI)
+		if !found {
+			return s.makeResponse(req.ID, nil, &RPCError{Code: -32602, Message: "Resource is not available"})
+		}
+		columns, err := s.oracleMgr.GetTableSchema(ctx, *activeProfile, tableName)
+		if err != nil {
+			return s.makeResponse(req.ID, nil, &RPCError{Code: -32000, Message: "Could not read resource: " + err.Error()})
+		}
+		contents, err := tableResourceContents(params.URI, tableName, columns)
+		if err != nil {
+			return s.makeResponse(req.ID, nil, &RPCError{Code: -32603, Message: "Could not encode resource"})
+		}
+		return s.makeResponse(req.ID, map[string]interface{}{"contents": contents}, nil)
 
 	case "resources/templates/list":
 		return s.makeResponse(req.ID, map[string]interface{}{"resourceTemplates": []interface{}{}}, nil)
@@ -424,6 +464,7 @@ func (s *MCPServer) getToolsList() []ToolDefinition {
 		{
 			Name:        "oracle_list_tables",
 			Description: "Lists all tables, views, and stored procedures accessible to the current Oracle user.",
+			Annotations: &ToolAnnotations{ReadOnlyHint: true},
 			InputSchema: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -432,6 +473,7 @@ func (s *MCPServer) getToolsList() []ToolDefinition {
 		{
 			Name:        "oracle_describe_table",
 			Description: "Inspects schema of a table, returning columns, data types, nullability, and primary keys.",
+			Annotations: &ToolAnnotations{ReadOnlyHint: true},
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -478,6 +520,7 @@ func (s *MCPServer) getToolsList() []ToolDefinition {
 		{
 			Name:        "oracle_list_connections",
 			Description: "Returns all saved Oracle database connection profiles and indicates which is currently active.",
+			Annotations: &ToolAnnotations{ReadOnlyHint: true},
 			InputSchema: map[string]interface{}{
 				"type":       "object",
 				"properties": map[string]interface{}{},
@@ -704,4 +747,25 @@ func (s *MCPServer) getResourcesList(ctx context.Context) []map[string]interface
 		})
 	}
 	return resources
+}
+
+// findResourceTable accepts only a URI currently advertised by resources/list.
+func findResourceTable(resources []map[string]interface{}, uri string) (string, bool) {
+	for _, resource := range resources {
+		if resource["uri"] == uri {
+			name, ok := resource["name"].(string)
+			return name, ok
+		}
+	}
+	return "", false
+}
+
+func tableResourceContents(uri, tableName string, columns []models.ColumnInfo) ([]map[string]interface{}, error) {
+	metadata, err := json.Marshal(map[string]interface{}{"table": tableName, "columns": columns})
+	if err != nil {
+		return nil, err
+	}
+	return []map[string]interface{}{{
+		"uri": uri, "mimeType": "application/json", "text": string(metadata),
+	}}, nil
 }
